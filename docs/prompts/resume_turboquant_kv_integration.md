@@ -49,7 +49,52 @@ Steps to execute (in order):
    - Test: verify turboquant35 KV dtype works
    - Push fixes to ithllc/vllm-turboquant
 
-4. **Implement unified quantization pipeline** — CRITICAL DESIGN CHANGE:
+4. **Add CUDA version check and graceful degradation** — REQUIRED FOR END USERS:
+   tqCLI must detect the user's CUDA version at runtime and handle incompatibility
+   gracefully. Users with older CUDA (e.g., 11.x) should NOT get cryptic segfaults.
+
+   Add to `tqcli/core/system_info.py` or `tqcli/core/kv_quantizer.py`:
+   ```python
+   def check_turboquant_compatibility(sys_info) -> tuple[bool, str]:
+       """Check if TurboQuant KV cache compression is available on this system."""
+       # Check CUDA version (need >= 12.8 for our TurboQuant fork kernels)
+       cuda_version = sys_info.gpus[0].cuda_version if sys_info.gpus else ""
+       # Parse major.minor from cuda_version string
+       if not cuda_version or parse_cuda_version(cuda_version) < (12, 8):
+           return False, (
+               f"TurboQuant KV cache requires CUDA >= 12.8. "
+               f"Your system has CUDA {cuda_version or 'not detected'}. "
+               f"Falling back to standard KV cache (q8_0). "
+               f"To enable TurboQuant: upgrade CUDA toolkit to 12.8+, or use --kv-quant none"
+           )
+       # Check if the TurboQuant fork's llama-cpp-python is installed
+       # (stock llama-cpp-python won't have turbo cache types)
+       try:
+           from llama_cpp import Llama
+           # Try to detect if turbo types are available
+           # This check is engine-specific
+       except ImportError:
+           pass
+       return True, "TurboQuant KV cache available"
+   ```
+
+   Wire this into the CLI so that:
+   - `tqcli system info` shows "TurboQuant KV: available" or "TurboQuant KV: unavailable (CUDA 11.5 < 12.8)"
+   - `tqcli chat --kv-quant turbo3` on incompatible system prints the clear error and falls back to `--kv-quant none`
+   - `tqcli chat --kv-quant auto` silently falls back to `none` with a dim warning if TurboQuant is unavailable
+
+   DESIGN PRINCIPLE: tqCLI is ONE version — no separate builds per CUDA version.
+   The CUDA-specific work lives in the inference engine forks (ithllc/llama-cpp-turboquant
+   and ithllc/vllm-turboquant). tqCLI detects at runtime what's available and degrades
+   gracefully. A user on CUDA 11.x gets standard inference. A user on CUDA 12.8+ gets
+   TurboQuant KV compression. Both use the same `pip install tqcli`.
+
+   For the forked inference engines (ithllc/llama-cpp-turboquant, ithllc/vllm-turboquant):
+   - Build with multiple SM architectures: `-DCMAKE_CUDA_ARCHITECTURES="70;75;80;86;89;90"`
+   - This makes the binary work across Volta, Turing, Ampere, Ada, Hopper GPUs
+   - Users who can't build from source get the CPU-only fallback (works, just slower)
+
+5. **Implement unified quantization pipeline** — CRITICAL DESIGN CHANGE:
    The quantization pipeline in tqcli must detect model precision and apply
    the correct compression stages automatically. Update tqcli/core/quantizer.py
    and tqcli/core/kv_quantizer.py (or merge them) to implement this logic:
@@ -86,28 +131,31 @@ Steps to execute (in order):
    - Pre-quantized GGUF → should get KV cache compression only
    - Pre-quantized AWQ → should get KV cache compression only
 
-5. **Wire VllmBackend for turboquant KV** (not yet done):
+6. **Wire VllmBackend for turboquant KV** (not yet done):
    - Update tqcli/core/vllm_backend.py to pass turboquant kv_cache_dtype
    - Update tqcli/core/vllm_config.py to include KV quant in tuning profile
-   - Ensure the unified pipeline from step 4 drives both weight + KV decisions
+   - Ensure the unified pipeline from step 5 drives both weight + KV decisions
 
-6. **Write test_integration_turboquant_kv.py** based on test cases at:
+7. **Write test_integration_turboquant_kv.py** based on test cases at:
    tests/integration_reports/turboquant_kv_test_cases.md
    
-   IMPORTANT: Tests must verify the unified pipeline logic:
+   IMPORTANT: Tests must verify the unified pipeline logic AND CUDA compatibility:
    - Test 1: llama.cpp Gemma 4 E4B Q4_K_M + turbo3 KV (weight already quantized → KV only)
    - Test 2: llama.cpp Qwen 3 4B Q4_K_M + turbo3 KV (weight already quantized → KV only)
    - Test 3: vLLM Qwen 3 4B BF16 + bnb INT4 + turboquant35 KV (full precision → BOTH stages)
    - Test 4: vLLM Qwen 3 4B AWQ + turboquant35 KV (weight already quantized → KV only)
    - Test 5: Baseline comparison (no weight quant changes, no KV compression)
+   - Test 6: CUDA compatibility check — verify that check_turboquant_compatibility()
+     returns the correct status for our hardware, and that --kv-quant turbo3 on a
+     system without TurboQuant fork prints a clear user-facing message (not a crash)
    
    Each test must LOG which pipeline stages were applied (weight quant, KV cache, or both)
    so the report clearly shows the decision logic working.
 
-7. **Run all 5 integration tests** and generate comparison report at:
+8. **Run all 6 integration tests** and generate comparison report at:
    tests/integration_reports/turboquant_kv_comparison_report.md
 
-8. **Post-integration**: Review issues, update ALL docs (CLAUDE.md, README.md, test case docs, llama_cpp_test_cases.md, vllm_test_cases.md), close issues, bump to v0.5.0, commit, push.
+9. **Post-integration**: Review issues, update ALL docs (CLAUDE.md, README.md, test case docs, llama_cpp_test_cases.md, vllm_test_cases.md), close issues, bump to v0.5.0, commit, push.
 
 If you encounter issues at any step, file them via gh issue create on ithllc/tqCLI, fix them, and comment the solution on the issue. Use your issue-manager and project-manager skill sets as needed.
 
