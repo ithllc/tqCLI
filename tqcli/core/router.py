@@ -74,6 +74,11 @@ class RouteDecision:
     domain: TaskDomain
     confidence: float  # 0.0 - 1.0
     reason: str
+    use_thinking: bool = False  # whether to enable Qwen 3 thinking mode
+
+
+# Domains that benefit from thinking/reasoning chains
+_THINKING_DOMAINS = {TaskDomain.CODING, TaskDomain.MATH, TaskDomain.REASONING}
 
 
 def classify_prompt(text: str) -> tuple[TaskDomain, float]:
@@ -172,21 +177,27 @@ class ModelRouter:
         if not candidates:
             # Fall back to any available model
             best = available[0]
+            thinking = best.supports_thinking and domain in _THINKING_DOMAINS
             return RouteDecision(
                 model=best,
                 domain=domain,
                 confidence=confidence * 0.5,
                 reason=f"No optimal model fits hardware; falling back to {best.display_name}",
+                use_thinking=thinking,
             )
 
         best = candidates[0]
         score = best.strength_scores.get(domain.value, 0.0)
+        # Enable thinking mode for complex domains if the model supports it
+        thinking = best.supports_thinking and domain in _THINKING_DOMAINS
+        thinking_note = " +thinking" if thinking else ""
         return RouteDecision(
             model=best,
             domain=domain,
             confidence=confidence,
             reason=(
                 f"Routed to {best.display_name} — best for {domain.value} "
-                f"(score: {score:.2f}, confidence: {confidence:.2f})"
+                f"(score: {score:.2f}, confidence: {confidence:.2f}){thinking_note}"
             ),
+            use_thinking=thinking,
         )

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-04-14
+
+### Changed
+
+- **Model registry rewrite**: replaced stale Qwen 2.5 and generic Gemma entries with accurate current models
+  - **Google Gemma 4**: E2B (2.3B), E4B (4.5B), 26B MoE (3.8B active), 31B Dense — all with multimodal support, 128K-256K context
+  - **Qwen 3**: 4B, 8B, 32B dense + 30B-A3B MoE — all with thinking mode, 32K-128K context
+  - **Qwen3-Coder**: Coder-Next 80B MoE (3B active, 256K context), Coder-30B-A3B
+- Updated strength scores from published benchmarks (Gemma 4 model card, Qwen 3 technical report, qwenlm.github.io)
+- MoE models now track `active_params` separately from total parameter count
+
+### Added
+
+- **Qwen 3 thinking mode**: router auto-enables `<think>` reasoning for coding/math/reasoning tasks
+- `/think` and `/no_think` per-message overrides in interactive chat
+- Thinking block display: `<think>` blocks shown dimmed, cleaned from final output
+- `ModelProfile.supports_thinking`, `active_params`, `multimodal` fields
+- `tq-model-updater` skill for researching and updating model registry
+- `tq-model-updater/scripts/check_models.py` to verify HuggingFace repo availability
+
 ## [0.2.0] - 2026-04-14
 
 ### Added

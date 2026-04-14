@@ -10,7 +10,7 @@ import pytest
 
 def test_version():
     from tqcli import __version__
-    assert __version__ == "0.2.0"
+    assert __version__ == "0.3.0"
 
 
 def test_config_defaults():
@@ -80,6 +80,45 @@ def test_router_classification():
 
     domain, conf = classify_prompt("Hello, how are you?")
     assert domain == TaskDomain.GENERAL
+
+
+def test_model_registry_gemma4_profiles():
+    from tqcli.core.model_registry import BUILTIN_PROFILES
+    gemma_models = [p for p in BUILTIN_PROFILES if p.family == "gemma4"]
+    assert len(gemma_models) == 4  # E2B, E4B, 26B MoE, 31B Dense
+    # All Gemma 4 are multimodal
+    for m in gemma_models:
+        assert m.multimodal is True
+    # 31B has highest reasoning score among Gemma
+    dense = next(m for m in gemma_models if "31b" in m.id.lower())
+    assert dense.context_length == 256000
+
+
+def test_model_registry_qwen3_profiles():
+    from tqcli.core.model_registry import BUILTIN_PROFILES
+    qwen3_general = [p for p in BUILTIN_PROFILES if p.family == "qwen3"]
+    qwen3_coder = [p for p in BUILTIN_PROFILES if p.family == "qwen3-coder"]
+    assert len(qwen3_general) >= 4  # 4B, 8B, 32B, 30B-A3B
+    assert len(qwen3_coder) >= 2  # Coder-Next, Coder-30B-A3B
+    # All Qwen 3 general models support thinking
+    for m in qwen3_general:
+        assert m.supports_thinking is True
+    # Coder models have highest coding scores
+    coder_next = next(m for m in qwen3_coder if "next" in m.id.lower())
+    assert coder_next.strength_scores["coding"] >= 0.90
+    assert coder_next.active_params == "3B"
+
+
+def test_router_thinking_mode():
+    """Test that the router enables thinking for complex domains."""
+    from tqcli.core.router import RouteDecision, TaskDomain, _THINKING_DOMAINS
+    # Coding, Math, Reasoning should trigger thinking
+    assert TaskDomain.CODING in _THINKING_DOMAINS
+    assert TaskDomain.MATH in _THINKING_DOMAINS
+    assert TaskDomain.REASONING in _THINKING_DOMAINS
+    # General and Creative should not
+    assert TaskDomain.GENERAL not in _THINKING_DOMAINS
+    assert TaskDomain.CREATIVE not in _THINKING_DOMAINS
 
 
 def test_performance_monitor():

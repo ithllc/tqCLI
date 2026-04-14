@@ -17,13 +17,13 @@ Built with [TurboQuant](https://arxiv.org/abs/2504.19874) methodologies — appl
 
 ## Supported Models
 
-| Model Family | Strengths | Best For |
-|-------------|-----------|----------|
-| **Google Gemma 4** (12B, 27B) | General reasoning, multilingual, instruction following | Q&A, analysis, general tasks |
-| **Qwen2.5-Coder** (7B, 32B) | Code generation, debugging, code review | Coding, code explanation, debugging |
-| **Qwen2.5-Instruct** (7B, 32B) | Instruction following, conversation | Chat, summarization, translation |
+| Model Family | Variants | Strengths | Best For |
+|-------------|----------|-----------|----------|
+| **Google Gemma 4** | E2B, E4B, 26B MoE, 31B Dense | General reasoning, multimodal, 140+ languages, 256K context | Q&A, analysis, general tasks |
+| **Qwen3** | 4B, 8B, 32B, 30B-A3B MoE | Thinking mode, reasoning, 128K context, 119 languages | Reasoning, general chat, math |
+| **Qwen3-Coder** | Coder-Next 80B MoE, Coder-30B-A3B | Code generation, agentic coding, 256K context | Coding, debugging, SWE tasks |
 
-All models available as GGUF quantized files (Q2_K through Q8_0) for llama.cpp, or AWQ/GPTQ for vLLM.
+All models available as GGUF quantized files on HuggingFace for llama.cpp. Qwen 3 models feature built-in **thinking mode** — deep reasoning chains that the router enables automatically for complex tasks.
 
 ## Platform Support
 
@@ -72,9 +72,9 @@ tqcli system info
 tqcli model list
 
 # Download based on your hardware (see system info output)
-tqcli model pull gemma-4-12b-it-Q4_K_M        # 12B general-purpose (needs ~8GB)
-tqcli model pull qwen2.5-coder-7b-instruct-Q4_K_M  # 7B coding (needs ~6GB)
-tqcli model pull qwen2.5-7b-instruct-Q4_K_M        # 7B instruction (needs ~6GB)
+tqcli model pull gemma-4-e4b-it-Q4_K_M            # 4.5B edge model (needs ~4GB)
+tqcli model pull qwen3-8b-Q4_K_M                  # 8B general w/ thinking mode (needs ~6GB)
+tqcli model pull qwen3-coder-30b-a3b-instruct-Q4_K_M  # 30B MoE coder (needs ~18GB)
 ```
 
 ### Chat
@@ -99,14 +99,16 @@ When multiple models are installed, tqCLI automatically routes prompts to the be
 
 ```
 User: "Write a Python function to parse JSON"
-  -> Routes to Qwen2.5-Coder (coding: 0.95 score)
+  -> Routes to Qwen3-Coder (coding: 0.95 score)
 
-User: "Explain the trade-offs between TCP and UDP"
-  -> Routes to Gemma 4 (reasoning: 0.90 score)
+User: "Prove that the square root of 2 is irrational"
+  -> Routes to Qwen3 32B (reasoning: 0.92 score) +thinking mode
 
 User: "Summarize this article for me"
-  -> Routes to Qwen2.5-Instruct (instruction: 0.92 score)
+  -> Routes to Gemma 4 31B (general: 0.95 score)
 ```
+
+Qwen 3 models support **thinking mode** — the router automatically enables it for coding, math, and reasoning tasks. Override per-message with `/think` or `/no_think` in the chat session.
 
 The router classifies prompts using keyword and pattern heuristics, then ranks available models by their domain-specific strength scores. If only one model is loaded, classification is skipped.
 
@@ -191,6 +193,7 @@ tqCLI includes a skills system inspired by Claude Code:
 | `tq-security-audit` | Audit environment isolation and security posture |
 | `tq-handoff-generator` | Generate handoff files for frontier model CLIs |
 | `tq-multi-process` | Multi-process orchestration with shared inference server |
+| `tq-model-updater` | Research and update model registry with latest HF repos |
 
 ```bash
 tqcli skills  # List all available skills

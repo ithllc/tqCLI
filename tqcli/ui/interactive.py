@@ -47,14 +47,29 @@ class InteractiveSession:
         self._conversation_dicts: list[dict] = []
 
     def chat_turn(self, user_input: str) -> str:
-        self.history.append(ChatMessage(role="user", content=user_input))
-        self._conversation_dicts.append({"role": "user", "content": user_input})
+        # Qwen 3 thinking mode: user can override per-turn with /think or /no_think
+        use_thinking = False
+        effective_input = user_input
+        if user_input.strip().startswith("/think "):
+            use_thinking = True
+            effective_input = user_input.strip()[7:]
+        elif user_input.strip().startswith("/no_think "):
+            use_thinking = False
+            effective_input = user_input.strip()[10:]
+
+        self.history.append(ChatMessage(role="user", content=effective_input))
+        self._conversation_dicts.append({"role": "user", "content": effective_input})
 
         # Route if router is available and multiple models exist
         if self.router:
             try:
-                decision = self.router.route(user_input)
+                decision = self.router.route(effective_input)
+                # Use router's thinking recommendation unless user overrode
+                if not user_input.strip().startswith(("/think ", "/no_think ")):
+                    use_thinking = decision.use_thinking
                 print_route_decision(decision)
+                if use_thinking:
+                    console.print("  [dim]Thinking mode: enabled[/dim]")
                 # If routed to a different model than currently loaded, switch
                 if decision.model.local_path and str(decision.model.local_path) != getattr(
                     self.engine, "_model_path", ""
@@ -76,9 +91,22 @@ class InteractiveSession:
                 if stats:
                     final_stats = stats
                     break
+                # Filter out <think>...</think> blocks from display if present
                 buffer += chunk
                 full_response += chunk
-                live.update(Text(buffer))
+                # Show thinking blocks dimmed
+                display_text = buffer
+                if "<think>" in display_text and "</think>" not in display_text:
+                    # Still inside a thinking block — show dimmed
+                    parts = display_text.rsplit("<think>", 1)
+                    display = Text(parts[0])
+                    display.append(parts[1], style="dim")
+                    live.update(display)
+                else:
+                    # Strip completed thinking blocks for clean display
+                    import re
+                    clean = re.sub(r"<think>.*?</think>\s*", "", display_text, flags=re.DOTALL)
+                    live.update(Text(clean))
 
         self.history.append(ChatMessage(role="assistant", content=full_response))
         self._conversation_dicts.append({"role": "assistant", "content": full_response})
@@ -108,7 +136,8 @@ class InteractiveSession:
 
     def run(self):
         console.print("[bold cyan]tqCLI Interactive Chat[/bold cyan]")
-        console.print("[dim]Type /quit to exit, /stats for performance, /handoff to generate handoff[/dim]\n")
+        console.print("[dim]Type /quit to exit, /stats for performance, /handoff to generate handoff[/dim]")
+        console.print("[dim]/think <msg> to force reasoning, /no_think <msg> to skip it[/dim]\n")
 
         while True:
             try:
@@ -136,6 +165,8 @@ class InteractiveSession:
                 console.print("  /quit     — Exit chat")
                 console.print("  /stats    — Show performance statistics")
                 console.print("  /handoff  — Generate handoff file for frontier model CLI")
+                console.print("  /think    — Prefix a message to force thinking mode (Qwen 3)")
+                console.print("  /no_think — Prefix a message to skip thinking mode")
                 console.print("  /help     — Show this help")
                 continue
 

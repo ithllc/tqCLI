@@ -83,20 +83,32 @@ tqcli model list
 
 ### Choosing the Right Model
 
-**If you have 8+ GB available memory (RAM or VRAM):**
+**If you have 20+ GB available memory:**
 ```bash
-tqcli model pull gemma-4-12b-it-Q4_K_M         # Best general-purpose
+tqcli model pull gemma-4-31b-it-Q4_K_M         # Best general-purpose (256K context)
+tqcli model pull qwen3-32b-Q4_K_M              # Best reasoning with thinking mode
 ```
 
-**If you have 6+ GB available:**
+**If you have 6-8 GB available:**
 ```bash
-tqcli model pull qwen2.5-coder-7b-instruct-Q4_K_M   # Best for coding
-tqcli model pull qwen2.5-7b-instruct-Q4_K_M          # Best for general chat
+tqcli model pull qwen3-8b-Q4_K_M              # General + thinking mode (128K context)
+tqcli model pull gemma-4-e4b-it-Q4_K_M        # Gemma edge model (128K context)
+```
+
+**If you have 3-4 GB available (edge/constrained):**
+```bash
+tqcli model pull qwen3-4b-Q4_K_M              # Small but capable (rivals Qwen2.5-72B!)
+tqcli model pull gemma-4-e2b-it-Q4_K_M        # Smallest Gemma with multimodal
 ```
 
 **If you have limited VRAM (4 GB) but plenty of RAM (16+ GB):**
 
 The model will run partially on GPU and partially on RAM. This works — it's slower than full GPU but faster than CPU-only. tqCLI's llama.cpp backend handles this automatically.
+
+**For coding specifically:**
+```bash
+tqcli model pull qwen3-coder-30b-a3b-instruct-Q4_K_M  # MoE coder (3B active params)
+```
 
 ### Understanding Memory
 
