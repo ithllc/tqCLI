@@ -27,6 +27,7 @@ class LlamaBackend(InferenceEngine):
         self._verbose = verbose
         self._model = None
         self._model_path: str = ""
+        self._chat_handler = None  # multimodal clip handler
 
     @property
     def engine_name(self) -> str:
@@ -52,6 +53,25 @@ class LlamaBackend(InferenceEngine):
         }
         if self._n_threads > 0:
             params["n_threads"] = self._n_threads
+
+        # Multimodal: load clip model only if explicitly requested or model supports it
+        clip_path = kwargs.get("clip_model_path")
+        multimodal = kwargs.get("multimodal", False)
+        if not clip_path and multimodal:
+            from pathlib import Path
+            model_dir = Path(model_path).parent
+            for candidate in model_dir.glob("mmproj*.gguf"):
+                clip_path = str(candidate)
+                break
+
+        if clip_path and multimodal:
+            try:
+                from llama_cpp.llama_chat_format import Llava16ChatHandler
+                self._chat_handler = Llava16ChatHandler(clip_model_path=clip_path, verbose=self._verbose)
+                params["chat_handler"] = self._chat_handler
+            except (ImportError, Exception):
+                self._chat_handler = None
+
         self._model = Llama(**params)
         self._model_path = model_path
 
@@ -65,11 +85,51 @@ class LlamaBackend(InferenceEngine):
     def is_loaded(self) -> bool:
         return self._model is not None
 
+    def _build_message_dicts(self, messages: list[ChatMessage]) -> list[dict]:
+        """Build message dicts, converting multimodal content to llava format."""
+        import base64
+        from pathlib import Path
+
+        result = []
+        for m in messages:
+            if (m.images or m.audio) and self._chat_handler:
+                # Build multimodal content array
+                content_parts = []
+                if m.images:
+                    for img_path in m.images:
+                        p = Path(img_path)
+                        if p.exists():
+                            data = base64.b64encode(p.read_bytes()).decode()
+                            ext = p.suffix.lower().lstrip(".")
+                            mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                                    "gif": "image/gif", "webp": "image/webp"}.get(ext, "image/png")
+                            content_parts.append({
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{mime};base64,{data}"}
+                            })
+                if m.audio:
+                    for audio_path in m.audio:
+                        p = Path(audio_path)
+                        if p.exists():
+                            data = base64.b64encode(p.read_bytes()).decode()
+                            ext = p.suffix.lower().lstrip(".")
+                            mime = {"wav": "audio/wav", "mp3": "audio/mpeg",
+                                    "ogg": "audio/ogg", "flac": "audio/flac"}.get(ext, "audio/wav")
+                            content_parts.append({
+                                "type": "input_audio",
+                                "input_audio": {"data": data, "format": ext}
+                            })
+                content_parts.append({"type": "text", "text": m.content})
+                result.append({"role": m.role, "content": content_parts})
+            else:
+                result.append({"role": m.role, "content": m.content})
+        return result
+
     def chat(self, messages: list[ChatMessage], **kwargs) -> CompletionResult:
         if not self._model:
             raise RuntimeError("No model loaded. Call load_model() first.")
 
-        msg_dicts = [{"role": m.role, "content": m.content} for m in messages]
+        msg_dicts = self._build_message_dicts(messages)
         start = time.perf_counter()
 
         response = self._model.create_chat_completion(
@@ -107,7 +167,7 @@ class LlamaBackend(InferenceEngine):
         if not self._model:
             raise RuntimeError("No model loaded. Call load_model() first.")
 
-        msg_dicts = [{"role": m.role, "content": m.content} for m in messages]
+        msg_dicts = self._build_message_dicts(messages)
         start = time.perf_counter()
         first_token_time = None
         token_count = 0

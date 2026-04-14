@@ -57,7 +57,7 @@ class InteractiveSession:
         self.history: list[ChatMessage] = [ChatMessage(role="system", content=SYSTEM_PROMPT)]
         self._conversation_dicts: list[dict] = []
 
-    def chat_turn(self, user_input: str) -> str:
+    def chat_turn(self, user_input: str, images: list[str] | None = None, audio: list[str] | None = None) -> str:
         # Qwen 3 thinking mode: user can override per-turn with /think or /no_think
         use_thinking = False
         effective_input = user_input
@@ -68,7 +68,25 @@ class InteractiveSession:
             use_thinking = False
             effective_input = user_input.strip()[10:]
 
-        self.history.append(ChatMessage(role="user", content=effective_input))
+        # Parse /image and /audio prefixes from input
+        parsed_images = list(images or [])
+        parsed_audio = list(audio or [])
+        while effective_input.strip().startswith("/image "):
+            parts = effective_input.strip()[7:].split(None, 1)
+            if parts:
+                parsed_images.append(parts[0])
+                effective_input = parts[1] if len(parts) > 1 else ""
+        while effective_input.strip().startswith("/audio "):
+            parts = effective_input.strip()[7:].split(None, 1)
+            if parts:
+                parsed_audio.append(parts[0])
+                effective_input = parts[1] if len(parts) > 1 else ""
+
+        msg = ChatMessage(
+            role="user", content=effective_input,
+            images=parsed_images or None, audio=parsed_audio or None,
+        )
+        self.history.append(msg)
         self._conversation_dicts.append({"role": "user", "content": effective_input})
 
         # Route if router is available and multiple models exist

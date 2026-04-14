@@ -36,7 +36,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-llama = ["llama-cpp-python>=0.3.0"]
+llama = ["llama-cpp-python[server]>=0.3.0"]
 vllm = ["vllm>=0.6.0"]
 all = ["tqcli[llama,vllm]"]
 dev = ["pytest>=7.0", "ruff>=0.4"]

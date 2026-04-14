@@ -181,7 +181,7 @@ def chat(ctx, model, engine, context_length, server_url):
         console.print(f"\n  Loading [bold]{target.display_name}[/bold]...")
         console.print(f"  [dim]Mode: single-process (in-process inference)[/dim]")
         sec.log_event("model_load", {"model": target.id})
-        eng.load_model(str(target.local_path))
+        eng.load_model(str(target.local_path), multimodal=target.multimodal)
     else:
         console.print(f"\n[red]Model {target.id} not found locally.[/red]")
         return
@@ -396,15 +396,146 @@ def security_audit(as_json, fix):
 # ── Skills ────────────────────────────────────────────────────────────
 
 
-@main.command("skills")
-def list_skills():
+@main.group("skill", invoke_without_command=True)
+@click.pass_context
+def skill_group(ctx):
+    """Skill management — list and create skills."""
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(skill_list)
+
+
+@skill_group.command("list")
+def skill_list():
     """List available tqCLI skills."""
     from tqcli.skills.loader import SkillLoader
     from tqcli.ui.console import print_skill_list
 
     project_skills = Path(__file__).parent.parent / ".claude" / "skills"
-    loader = SkillLoader([project_skills])
-    skills = loader.get_tq_skills()
+    user_skills = Path.home() / ".tqcli" / "skills"
+    loader = SkillLoader([project_skills, user_skills])
+    skills = loader.list_skills()
+    print_skill_list(skills)
+
+
+@skill_group.command("create")
+@click.argument("name")
+@click.option("--description", "-d", default="", help="Skill description")
+def skill_create(name, description):
+    """Create a new skill directory with SKILL.md and template script."""
+    from tqcli.ui.console import console
+
+    skills_dir = Path.home() / ".tqcli" / "skills"
+    skill_dir = skills_dir / name
+    if skill_dir.exists():
+        console.print(f"[red]Skill '{name}' already exists at {skill_dir}[/red]")
+        return
+
+    skill_dir.mkdir(parents=True)
+    scripts_dir = skill_dir / "scripts"
+    scripts_dir.mkdir()
+
+    desc = description or f"Custom skill: {name}"
+    # Create SKILL.md
+    skill_md = skill_dir / "SKILL.md"
+    skill_md.write_text(f"""---
+name: {name}
+description: {desc}
+---
+
+# {name}
+
+{desc}
+
+## Usage
+Run with: `tqcli skill run {name}`
+""")
+
+    # Create template script
+    script_file = scripts_dir / f"run_{name.replace('-', '_')}.py"
+    script_file.write_text(f'''#!/usr/bin/env python3
+"""Skill: {name} — {desc}"""
+
+import argparse
+import json
+import sys
+
+
+def main():
+    parser = argparse.ArgumentParser(description="{desc}")
+    parser.add_argument("--output", "-o", default=None, help="Output file path")
+    args = parser.parse_args()
+
+    result = {{
+        "skill": "{name}",
+        "status": "completed",
+        "message": "Skill {name} executed successfully",
+    }}
+
+    if args.output:
+        with open(args.output, "w") as f:
+            json.dump(result, f, indent=2)
+    else:
+        print(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    main()
+''')
+
+    console.print(f"[green]Skill created:[/green] {skill_dir}")
+    console.print(f"  SKILL.md:  {skill_md}")
+    console.print(f"  Script:    {script_file}")
+    console.print(f"\nList skills with: tqcli skill list")
+
+
+@skill_group.command("run")
+@click.argument("name")
+@click.argument("args", nargs=-1)
+def skill_run(name, args):
+    """Run a skill's script."""
+    from tqcli.skills.loader import SkillLoader
+    from tqcli.ui.console import console
+
+    project_skills = Path(__file__).parent.parent / ".claude" / "skills"
+    user_skills = Path.home() / ".tqcli" / "skills"
+    loader = SkillLoader([project_skills, user_skills])
+    skill = loader.get_skill(name)
+
+    if not skill:
+        console.print(f"[red]Skill '{name}' not found.[/red]")
+        console.print("Available skills:")
+        for s in loader.list_skills():
+            console.print(f"  {s.name}")
+        return
+
+    if not skill.has_scripts:
+        console.print(f"[yellow]Skill '{name}' has no scripts.[/yellow]")
+        return
+
+    import subprocess
+    for script in skill.scripts:
+        console.print(f"Running {script.name}...")
+        result = subprocess.run(
+            [sys.executable, str(script)] + list(args),
+            capture_output=False,
+        )
+        if result.returncode != 0:
+            console.print(f"[red]Script {script.name} failed (exit code {result.returncode})[/red]")
+        else:
+            console.print(f"[green]Script {script.name} completed.[/green]")
+
+
+# Backward compat alias
+@main.command("skills", hidden=True)
+def list_skills_compat():
+    """List available tqCLI skills (alias for 'skill list')."""
+    from tqcli.skills.loader import SkillLoader
+    from tqcli.ui.console import print_skill_list
+
+    project_skills = Path(__file__).parent.parent / ".claude" / "skills"
+    user_skills = Path.home() / ".tqcli" / "skills"
+    loader = SkillLoader([project_skills, user_skills])
+    skills = loader.list_skills()
     print_skill_list(skills)
 
 

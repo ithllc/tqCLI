@@ -24,6 +24,8 @@ class InferenceStats:
 class ChatMessage:
     role: str  # "system", "user", "assistant"
     content: str
+    images: list[str] | None = None  # list of file paths for image inputs
+    audio: list[str] | None = None  # list of file paths for audio inputs
 
 
 @dataclass

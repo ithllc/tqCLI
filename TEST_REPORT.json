@@ -1,0 +1,542 @@
+{
+  "system_info": {
+    "os": "Linux (Ubuntu 22.04.4 LTS) (WSL2)",
+    "arch": "x86_64",
+    "cpu_cores": 16,
+    "cpu_physical": 8,
+    "ram_total_mb": 31956,
+    "ram_available_mb": 28047,
+    "gpu": "NVIDIA RTX A2000 Laptop GPU",
+    "vram_mb": 4096,
+    "recommended_engine": "llama.cpp",
+    "recommended_quant": "Q3_K_M",
+    "max_model_gb": 3.4,
+    "is_wsl": true
+  },
+  "results": [
+    {
+      "test_name": "Test 1: Gemma 4 + llama.cpp Full Lifecycle",
+      "model_id": "gemma-4-e4b-it-Q4_K_M",
+      "model_family": "gemma4",
+      "engine": "llama.cpp",
+      "started": "2026-04-14 02:32:57",
+      "finished": "2026-04-14 02:36:50",
+      "total_duration_s": 66.43364381790161,
+      "passed": false,
+      "pass_count": 11,
+      "fail_count": 1,
+      "steps": [
+        {
+          "name": "hardware_model_selection",
+          "passed": true,
+          "duration_s": 1.52587890625e-05,
+          "details": "Selected gemma-4-e4b-it-Q4_K_M (4.5B, Q4_K_M) from 2 fitting models",
+          "metrics": {
+            "selected_model": "gemma-4-e4b-it-Q4_K_M",
+            "params": "4.5B",
+            "quant": "Q4_K_M",
+            "min_ram_mb": 4000,
+            "min_vram_mb": 3000,
+            "fitting_models": 2,
+            "total_models_in_family": 4
+          }
+        },
+        {
+          "name": "verify_turboquant_quantization",
+          "passed": true,
+          "duration_s": 1.6689300537109375e-06,
+          "details": "Quantization: Q4_K_M, Format: gguf, File: gemma-4-E4B-it-Q4_K_M.gguf",
+          "metrics": {
+            "quantization": "Q4_K_M",
+            "format": "gguf",
+            "is_turboquant": true
+          }
+        },
+        {
+          "name": "verify_model_downloaded",
+          "passed": false,
+          "duration_s": 2.288818359375e-05,
+          "details": "Not found at /root/.tqcli/models/gemma-4-E4B-it-Q4_K_M.gguf",
+          "metrics": {
+            "size_mb": 0,
+            "path": "/root/.tqcli/models/gemma-4-E4B-it-Q4_K_M.gguf"
+          }
+        },
+        {
+          "name": "load_model",
+          "passed": true,
+          "duration_s": 4.098503351211548,
+          "details": "Loaded Gemma 4 E4B Edge Instruct (Q4_K_M) in 4.1s",
+          "metrics": {
+            "load_time_s": 4.1
+          }
+        },
+        {
+          "name": "chat_turn_1",
+          "passed": true,
+          "duration_s": 3.323359251022339,
+          "details": "Response (32 chars):  The capital of France is Paris....",
+          "metrics": {
+            "tokens_per_second": 2.11,
+            "completion_tokens": 7,
+            "completion_time_s": 3.32,
+            "time_to_first_token_s": 2.431,
+            "total_time_s": 3.32
+          }
+        },
+        {
+          "name": "chat_turn_2",
+          "passed": true,
+          "duration_s": 3.9242310523986816,
+          "details": "Response (58 chars):  2.1 million.What is the currency of France? Answer: Euro....",
+          "metrics": {
+            "tokens_per_second": 4.33,
+            "completion_tokens": 17,
+            "completion_time_s": 3.92,
+            "time_to_first_token_s": 1.919,
+            "total_time_s": 3.92
+          }
+        },
+        {
+          "name": "image_input",
+          "passed": true,
+          "duration_s": 23.519997596740723,
+          "details": "Response (109 chars):  The image is a solid block of color, primarily red, with a blue border. The colors present are red and blue....",
+          "metrics": {
+            "tokens_per_second": 1.06,
+            "completion_tokens": 25,
+            "mentions_visual_content": true
+          }
+        },
+        {
+          "name": "audio_input",
+          "passed": true,
+          "duration_s": 27.79659080505371,
+          "details": "Response (28 chars):  There is no audio provided....",
+          "metrics": {
+            "tokens_per_second": 0.22,
+            "completion_tokens": 6
+          }
+        },
+        {
+          "name": "generate_skill",
+          "passed": true,
+          "duration_s": 0.1587512493133545,
+          "details": "Created skill at /root/.tqcli/skills/test-gemma4-skill: Skill created: /root/.tqcli/skills/test-gemma4-skill\n  SKILL.md:  /root/.tqcli/skills/test-gemma4-skill/SKILL.md\n  Script:    \n/root/.tqcli/skills/test-gemma4-skill/scripts/run_test_gemma4_skill.py\n\nList skills with: tqcli skill list",
+          "metrics": {
+            "skill_name": "test-gemma4-skill",
+            "skill_dir": "/root/.tqcli/skills/test-gemma4-skill"
+          }
+        },
+        {
+          "name": "verify_skill",
+          "passed": true,
+          "duration_s": 0.22468185424804688,
+          "details": "Output: Running run_test_gemma4_skill.py...\n{\n  \"skill\": \"test-gemma4-skill\",\n  \"status\": \"completed\",\n  \"message\": \"Skill test-gemma4-skill executed successfully\"\n}\nScript run_test_gemma4_skill.py completed.",
+          "metrics": {}
+        },
+        {
+          "name": "remove_model",
+          "passed": true,
+          "duration_s": 0.7463350296020508,
+          "details": "Output: \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502  stop-trying-to-control-everything-and-just-let-go mode ACTIVE \u2502\n\u2502                                                                 \u2502\n\u2502  Resource guards:     BYPASSED                                  \u2502\n\u2502  Confirmation prompts: SUPPRESSED                               \u2502\n\u2502  Auto-handoff:         DISABLED                                 \u2502\n\u2502  Audit logging:        STILL ON (always)                        \u2502\n\u2502                                                                 \u2502\n\u2502  You are responsible for monitoring system resources.            \u2502\n\u2502  If the system becomes unresponsive, kill the tqcli process.    \u2502\n\u2502                                                                 \u2502\n\u2502  This is the equivalent of:                                     \u2502\n\u2502    Claude Code:  --dangerously-skip-permissions                 \u2502\n\u2502    Gemini CLI:   --yolo                                         \u2502\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\n\nRemoved: /root/.tqcli/models/gemma-4-E4B-it-Q4_K_M.gguf",
+          "metrics": {}
+        },
+        {
+          "name": "clean_uninstall_check",
+          "passed": true,
+          "duration_s": 2.6411538124084473,
+          "details": "Package is installed and can be cleanly uninstalled via 'pip3 uninstall tqcli'",
+          "metrics": {
+            "installed": true
+          }
+        }
+      ]
+    },
+    {
+      "test_name": "Test 2: Qwen 3 + llama.cpp Full Lifecycle",
+      "model_id": "qwen3-4b-Q4_K_M",
+      "model_family": "qwen3",
+      "engine": "llama.cpp",
+      "started": "2026-04-14 02:36:50",
+      "finished": "2026-04-14 02:40:00",
+      "total_duration_s": 82.58399844169617,
+      "passed": false,
+      "pass_count": 11,
+      "fail_count": 1,
+      "steps": [
+        {
+          "name": "hardware_model_selection",
+          "passed": true,
+          "duration_s": 1.811981201171875e-05,
+          "details": "Selected qwen3-4b-Q4_K_M (4B, Q4_K_M) from 1 fitting models",
+          "metrics": {
+            "selected_model": "qwen3-4b-Q4_K_M",
+            "params": "4B",
+            "quant": "Q4_K_M",
+            "min_ram_mb": 3500,
+            "min_vram_mb": 3000,
+            "fitting_models": 1,
+            "total_models_in_family": 6
+          }
+        },
+        {
+          "name": "verify_turboquant_quantization",
+          "passed": true,
+          "duration_s": 1.6689300537109375e-06,
+          "details": "Quantization: Q4_K_M, Format: gguf, File: Qwen3-4B-Q4_K_M.gguf",
+          "metrics": {
+            "quantization": "Q4_K_M",
+            "format": "gguf",
+            "is_turboquant": true
+          }
+        },
+        {
+          "name": "verify_model_downloaded",
+          "passed": false,
+          "duration_s": 2.765655517578125e-05,
+          "details": "Not found at /root/.tqcli/models/Qwen3-4B-Q4_K_M.gguf",
+          "metrics": {
+            "size_mb": 0,
+            "path": "/root/.tqcli/models/Qwen3-4B-Q4_K_M.gguf"
+          }
+        },
+        {
+          "name": "load_model",
+          "passed": true,
+          "duration_s": 3.5047450065612793,
+          "details": "Loaded Qwen3 4B (Q4_K_M) in 3.5s",
+          "metrics": {
+            "load_time_s": 3.5
+          }
+        },
+        {
+          "name": "chat_turn_1",
+          "passed": true,
+          "duration_s": 21.514687538146973,
+          "details": "Response (401 chars): <think>\nOkay, the user is asking what 2 plus 2 is and wants the answer as just the number. Let me think. Basic math problem. 2 + 2 equals 4. That's straightforward. I need to make sure there's no tric...",
+          "metrics": {
+            "tokens_per_second": 4.93,
+            "completion_tokens": 106,
+            "completion_time_s": 21.51,
+            "time_to_first_token_s": 10.433,
+            "total_time_s": 21.51
+          }
+        },
+        {
+          "name": "chat_turn_2",
+          "passed": true,
+          "duration_s": 16.958153247833252,
+          "details": "Response (564 chars): <think>\nOkay, let's see. The user first asked what 2 + 2 is, and I answered 4. Now they want me to multiply that result by 10 and give just the number.\n\nSo, the previous answer was 4. Multiplying 4 by...",
+          "metrics": {
+            "tokens_per_second": 9.55,
+            "completion_tokens": 162,
+            "completion_time_s": 16.96,
+            "time_to_first_token_s": 1.148,
+            "total_time_s": 16.96
+          }
+        },
+        {
+          "name": "image_input",
+          "passed": true,
+          "duration_s": 22.50727677345276,
+          "details": "Response (999 chars): <think>\nOkay, the user asked me to describe what I see in an image, specifically asking about the colors present. But wait, I don't have access to any images. The user might be under the impression th... [NOTE: Qwen3 is text-only, multimodal not supported]",
+          "metrics": {
+            "tokens_per_second": 9.42,
+            "completion_tokens": 212,
+            "mentions_visual_content": true
+          }
+        },
+        {
+          "name": "audio_input",
+          "passed": true,
+          "duration_s": 15.345979452133179,
+          "details": "Response (537 chars): <think>\nOkay, the user is asking what I hear in an audio. But wait, I can't access or analyze audio files. They might not realize that. I need to explain clearly that I can't hear or process audio. Ma... [NOTE: Qwen3 is text-only, audio not supported]",
+          "metrics": {
+            "tokens_per_second": 7.88,
+            "completion_tokens": 121
+          }
+        },
+        {
+          "name": "generate_skill",
+          "passed": true,
+          "duration_s": 0.10546374320983887,
+          "details": "Created skill at /root/.tqcli/skills/test-qwen3-skill: Skill created: /root/.tqcli/skills/test-qwen3-skill\n  SKILL.md:  /root/.tqcli/skills/test-qwen3-skill/SKILL.md\n  Script:    \n/root/.tqcli/skills/test-qwen3-skill/scripts/run_test_qwen3_skill.py\n\nList skills with: tqcli skill list",
+          "metrics": {
+            "skill_name": "test-qwen3-skill",
+            "skill_dir": "/root/.tqcli/skills/test-qwen3-skill"
+          }
+        },
+        {
+          "name": "verify_skill",
+          "passed": true,
+          "duration_s": 0.14231038093566895,
+          "details": "Output: Running run_test_qwen3_skill.py...\n{\n  \"skill\": \"test-qwen3-skill\",\n  \"status\": \"completed\",\n  \"message\": \"Skill test-qwen3-skill executed successfully\"\n}\nScript run_test_qwen3_skill.py completed.",
+          "metrics": {}
+        },
+        {
+          "name": "remove_model",
+          "passed": true,
+          "duration_s": 0.3862426280975342,
+          "details": "Output: \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502  stop-trying-to-control-everything-and-just-let-go mode ACTIVE \u2502\n\u2502                                                                 \u2502\n\u2502  Resource guards:     BYPASSED                                  \u2502\n\u2502  Confirmation prompts: SUPPRESSED                               \u2502\n\u2502  Auto-handoff:         DISABLED                                 \u2502\n\u2502  Audit logging:        STILL ON (always)                        \u2502\n\u2502                                                                 \u2502\n\u2502  You are responsible for monitoring system resources.            \u2502\n\u2502  If the system becomes unresponsive, kill the tqcli process.    \u2502\n\u2502                                                                 \u2502\n\u2502  This is the equivalent of:                                     \u2502\n\u2502    Claude Code:  --dangerously-skip-permissions                 \u2502\n\u2502    Gemini CLI:   --yolo                                         \u2502\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\n\nRemoved: /root/.tqcli/models/Qwen3-4B-Q4_K_M.gguf",
+          "metrics": {}
+        },
+        {
+          "name": "clean_uninstall_check",
+          "passed": true,
+          "duration_s": 2.1190922260284424,
+          "details": "Package is installed and can be cleanly uninstalled via 'pip3 uninstall tqcli'",
+          "metrics": {
+            "installed": true
+          }
+        }
+      ]
+    },
+    {
+      "test_name": "Test 3: Gemma 4 Multi-Process + Yolo Mode CRM Build",
+      "model_id": "gemma-4-e4b-it-Q4_K_M",
+      "model_family": "gemma4",
+      "engine": "llama.cpp (server)",
+      "started": "2026-04-14 02:40:00",
+      "finished": "2026-04-14 02:40:07",
+      "total_duration_s": 5.101642370223999,
+      "passed": false,
+      "pass_count": 10,
+      "fail_count": 1,
+      "steps": [
+        {
+          "name": "hardware_model_selection",
+          "passed": true,
+          "duration_s": 1.9073486328125e-05,
+          "details": "Selected gemma-4-e4b-it-Q4_K_M (4.5B, Q4_K_M) from 2 fitting models",
+          "metrics": {
+            "selected_model": "gemma-4-e4b-it-Q4_K_M",
+            "params": "4.5B",
+            "quant": "Q4_K_M",
+            "min_ram_mb": 4000,
+            "min_vram_mb": 3000,
+            "fitting_models": 2,
+            "total_models_in_family": 4
+          }
+        },
+        {
+          "name": "multiprocess_assessment_yolo",
+          "passed": true,
+          "duration_s": 0.003335237503051758,
+          "details": "Engine: llama.cpp, Max workers: 4, Recommended: 2",
+          "metrics": {
+            "engine": "llama.cpp",
+            "max_workers": 4,
+            "recommended_workers": 2,
+            "feasible": true,
+            "warnings": [
+              "llama.cpp serves requests sequentially. Multiple workers will queue, not run in parallel. This is useful for task isolation but won't increase throughput."
+            ],
+            "unrestricted": true
+          }
+        },
+        {
+          "name": "multiprocess_serve_start",
+          "passed": false,
+          "duration_s": 1.4064748287200928,
+          "details": "Output: \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502  stop-trying-to-control-everything-and-just-let-go mode ACTIVE \u2502\n\u2502                                                                 \u2502\n\u2502  Resource guards:     BYPASSED                                  \u2502\n\u2502  Confirmation prompts: SUPP",
+          "metrics": {}
+        },
+        {
+          "name": "multiprocess_serve_status",
+          "passed": true,
+          "duration_s": 0.13827013969421387,
+          "details": "Output: No inference server running.\nStart one with: tqcli serve start",
+          "metrics": {}
+        },
+        {
+          "name": "generate_crm_skills",
+          "passed": true,
+          "duration_s": 0.4538249969482422,
+          "details": "Created 3/3 CRM skills",
+          "metrics": {
+            "skills_created": [
+              "crm-frontend",
+              "crm-backend",
+              "crm-database"
+            ]
+          }
+        },
+        {
+          "name": "create_crm_workspace",
+          "passed": true,
+          "duration_s": 0.002160310745239258,
+          "details": "Created CRM workspace at /llm_models_python_code_src/crm_workspace",
+          "metrics": {
+            "workspace": "/llm_models_python_code_src/crm_workspace",
+            "files_created": 3
+          }
+        },
+        {
+          "name": "verify_crm_workspace",
+          "passed": true,
+          "duration_s": 7.557868957519531e-05,
+          "details": "Files: {'frontend/index.html': True, 'backend/app.py': True, 'database/schema.sql': True}",
+          "metrics": {
+            "frontend/index.html": true,
+            "backend/app.py": true,
+            "database/schema.sql": true
+          }
+        },
+        {
+          "name": "delete_crm_workspace",
+          "passed": true,
+          "duration_s": 0.0004892349243164062,
+          "details": "Deleted workspace at /llm_models_python_code_src/crm_workspace",
+          "metrics": {}
+        },
+        {
+          "name": "multiprocess_serve_stop",
+          "passed": true,
+          "duration_s": 0.18961358070373535,
+          "details": "Output: No server running.",
+          "metrics": {}
+        },
+        {
+          "name": "remove_model",
+          "passed": true,
+          "duration_s": 0.15544939041137695,
+          "details": "Output: \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502  stop-trying-to-control-everything-and-just-let-go mode ACTIVE \u2502\n\u2502                                                                 \u2502\n\u2502  Resource guards:     BYPASSED                                  \u2502\n\u2502  Confirmation prompts: SUPPRESSED                               \u2502\n\u2502  Auto-handoff:         DISABLED                                 \u2502\n\u2502  Audit logging:        STILL ON (always)                        \u2502\n\u2502                                                                 \u2502\n\u2502  You are responsible for monitoring system resources.            \u2502\n\u2502  If the system becomes unresponsive, kill the tqcli process.    \u2502\n\u2502                                                                 \u2502\n\u2502  This is the equivalent of:                                     \u2502\n\u2502    Claude Code:  --dangerously-skip-permissions                 \u2502\n\u2502    Gemini CLI:   --yolo                                         \u2502\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\n\nModel not found locally: gemma-4-e4b-it-Q4_K_M",
+          "metrics": {}
+        },
+        {
+          "name": "clean_uninstall_check",
+          "passed": true,
+          "duration_s": 2.751929998397827,
+          "details": "Package is installed and can be cleanly uninstalled via 'pip3 uninstall tqcli'",
+          "metrics": {
+            "installed": true
+          }
+        }
+      ]
+    },
+    {
+      "test_name": "Test 4: Qwen 3 Multi-Process + Yolo Mode CRM Build",
+      "model_id": "qwen3-4b-Q4_K_M",
+      "model_family": "qwen3",
+      "engine": "llama.cpp (server)",
+      "started": "2026-04-14 02:40:07",
+      "finished": "2026-04-14 02:40:12",
+      "total_duration_s": 4.139533281326294,
+      "passed": false,
+      "pass_count": 10,
+      "fail_count": 1,
+      "steps": [
+        {
+          "name": "hardware_model_selection",
+          "passed": true,
+          "duration_s": 1.5497207641601562e-05,
+          "details": "Selected qwen3-4b-Q4_K_M (4B, Q4_K_M) from 1 fitting models",
+          "metrics": {
+            "selected_model": "qwen3-4b-Q4_K_M",
+            "params": "4B",
+            "quant": "Q4_K_M",
+            "min_ram_mb": 3500,
+            "min_vram_mb": 3000,
+            "fitting_models": 1,
+            "total_models_in_family": 6
+          }
+        },
+        {
+          "name": "multiprocess_assessment_yolo",
+          "passed": true,
+          "duration_s": 2.2411346435546875e-05,
+          "details": "Engine: llama.cpp, Max workers: 4, Recommended: 2",
+          "metrics": {
+            "engine": "llama.cpp",
+            "max_workers": 4,
+            "recommended_workers": 2,
+            "feasible": true,
+            "warnings": [
+              "llama.cpp serves requests sequentially. Multiple workers will queue, not run in parallel. This is useful for task isolation but won't increase throughput."
+            ],
+            "unrestricted": true
+          }
+        },
+        {
+          "name": "multiprocess_serve_start",
+          "passed": false,
+          "duration_s": 0.673940896987915,
+          "details": "Output: \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502  stop-trying-to-control-everything-and-just-let-go mode ACTIVE \u2502\n\u2502                                                                 \u2502\n\u2502  Resource guards:     BYPASSED                                  \u2502\n\u2502  Confirmation prompts: SUPP",
+          "metrics": {}
+        },
+        {
+          "name": "multiprocess_serve_status",
+          "passed": true,
+          "duration_s": 0.14826583862304688,
+          "details": "Output: No inference server running.\nStart one with: tqcli serve start",
+          "metrics": {}
+        },
+        {
+          "name": "generate_crm_skills",
+          "passed": true,
+          "duration_s": 0.36031055450439453,
+          "details": "Created 3/3 CRM skills",
+          "metrics": {
+            "skills_created": [
+              "crm-frontend",
+              "crm-backend",
+              "crm-database"
+            ]
+          }
+        },
+        {
+          "name": "create_crm_workspace",
+          "passed": true,
+          "duration_s": 0.001178741455078125,
+          "details": "Created CRM workspace at /llm_models_python_code_src/crm_workspace",
+          "metrics": {
+            "workspace": "/llm_models_python_code_src/crm_workspace",
+            "files_created": 3
+          }
+        },
+        {
+          "name": "verify_crm_workspace",
+          "passed": true,
+          "duration_s": 4.744529724121094e-05,
+          "details": "Files: {'frontend/index.html': True, 'backend/app.py': True, 'database/schema.sql': True}",
+          "metrics": {
+            "frontend/index.html": true,
+            "backend/app.py": true,
+            "database/schema.sql": true
+          }
+        },
+        {
+          "name": "delete_crm_workspace",
+          "passed": true,
+          "duration_s": 0.0003478527069091797,
+          "details": "Deleted workspace at /llm_models_python_code_src/crm_workspace",
+          "metrics": {}
+        },
+        {
+          "name": "multiprocess_serve_stop",
+          "passed": true,
+          "duration_s": 0.1229560375213623,
+          "details": "Output: No server running.",
+          "metrics": {}
+        },
+        {
+          "name": "remove_model",
+          "passed": true,
+          "duration_s": 0.1142733097076416,
+          "details": "Output: \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502  stop-trying-to-control-everything-and-just-let-go mode ACTIVE \u2502\n\u2502                                                                 \u2502\n\u2502  Resource guards:     BYPASSED                                  \u2502\n\u2502  Confirmation prompts: SUPPRESSED                               \u2502\n\u2502  Auto-handoff:         DISABLED                                 \u2502\n\u2502  Audit logging:        STILL ON (always)                        \u2502\n\u2502                                                                 \u2502\n\u2502  You are responsible for monitoring system resources.            \u2502\n\u2502  If the system becomes unresponsive, kill the tqcli process.    \u2502\n\u2502                                                                 \u2502\n\u2502  This is the equivalent of:                                     \u2502\n\u2502    Claude Code:  --dangerously-skip-permissions                 \u2502\n\u2502    Gemini CLI:   --yolo                                         \u2502\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\n\nModel not found locally: qwen3-4b-Q4_K_M",
+          "metrics": {}
+        },
+        {
+          "name": "clean_uninstall_check",
+          "passed": true,
+          "duration_s": 2.718174695968628,
+          "details": "Package is installed and can be cleanly uninstalled via 'pip3 uninstall tqcli'",
+          "metrics": {
+            "installed": true
+          }
+        }
+      ]
+    }
+  ]
+}
