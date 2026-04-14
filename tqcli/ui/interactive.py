@@ -14,6 +14,14 @@ from tqcli.core.engine import ChatMessage, InferenceEngine
 from tqcli.core.handoff import generate_handoff
 from tqcli.core.performance import PerformanceMonitor
 from tqcli.core.router import ModelRouter
+from tqcli.core.thinking import (
+    ThinkingConfig,
+    ThinkingFormat,
+    build_system_prompt_with_thinking,
+    detect_thinking_format,
+    is_inside_thinking_block,
+    strip_thinking_blocks,
+)
 from tqcli.ui.console import (
     console,
     print_handoff_alert,
@@ -38,11 +46,14 @@ class InteractiveSession:
         engine: InferenceEngine,
         router: ModelRouter | None = None,
         monitor: PerformanceMonitor | None = None,
+        model_family: str = "",
     ):
         self.config = config
         self.engine = engine
         self.router = router
         self.monitor = monitor or PerformanceMonitor(config.performance)
+        self._thinking_fmt = detect_thinking_format(model_family)
+        self._thinking_config = ThinkingConfig(format=self._thinking_fmt, enabled=False)
         self.history: list[ChatMessage] = [ChatMessage(role="system", content=SYSTEM_PROMPT)]
         self._conversation_dicts: list[dict] = []
 
@@ -68,8 +79,14 @@ class InteractiveSession:
                 if not user_input.strip().startswith(("/think ", "/no_think ")):
                     use_thinking = decision.use_thinking
                 print_route_decision(decision)
+                # Update thinking format if model changed
+                self._thinking_fmt = detect_thinking_format(decision.model.family)
+                self._thinking_config = ThinkingConfig(
+                    format=self._thinking_fmt, enabled=use_thinking
+                )
                 if use_thinking:
-                    console.print("  [dim]Thinking mode: enabled[/dim]")
+                    fmt_name = "Qwen3" if self._thinking_fmt == ThinkingFormat.QWEN3 else "Gemma4"
+                    console.print(f"  [dim]Thinking mode: enabled ({fmt_name} format)[/dim]")
                 # If routed to a different model than currently loaded, switch
                 if decision.model.local_path and str(decision.model.local_path) != getattr(
                     self.engine, "_model_path", ""
@@ -79,6 +96,13 @@ class InteractiveSession:
                     self.engine.load_model(str(decision.model.local_path))
             except RuntimeError:
                 pass  # No models available, just use what's loaded
+
+        # Inject thinking tokens into system prompt if enabled
+        if self._thinking_config.is_active and self.history and self.history[0].role == "system":
+            self.history[0] = ChatMessage(
+                role="system",
+                content=build_system_prompt_with_thinking(SYSTEM_PROMPT, self._thinking_config),
+            )
 
         # Stream response
         full_response = ""
@@ -91,21 +115,20 @@ class InteractiveSession:
                 if stats:
                     final_stats = stats
                     break
-                # Filter out <think>...</think> blocks from display if present
                 buffer += chunk
                 full_response += chunk
-                # Show thinking blocks dimmed
-                display_text = buffer
-                if "<think>" in display_text and "</think>" not in display_text:
-                    # Still inside a thinking block — show dimmed
-                    parts = display_text.rsplit("<think>", 1)
-                    display = Text(parts[0])
-                    display.append(parts[1], style="dim")
+                # Render: show thinking blocks dimmed, strip completed ones
+                if is_inside_thinking_block(buffer, self._thinking_fmt):
+                    # Inside an unclosed thinking block — show dimmed
+                    clean_part = strip_thinking_blocks(buffer, self._thinking_fmt)
+                    display = Text(clean_part)
+                    # Find the unclosed portion and append dimmed
+                    remainder = buffer[len(clean_part):] if len(clean_part) < len(buffer) else ""
+                    if remainder:
+                        display.append(remainder, style="dim")
                     live.update(display)
                 else:
-                    # Strip completed thinking blocks for clean display
-                    import re
-                    clean = re.sub(r"<think>.*?</think>\s*", "", display_text, flags=re.DOTALL)
+                    clean = strip_thinking_blocks(buffer, self._thinking_fmt)
                     live.update(Text(clean))
 
         self.history.append(ChatMessage(role="assistant", content=full_response))

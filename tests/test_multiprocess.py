@@ -202,7 +202,7 @@ def test_cli_unrestricted_flag():
 
     runner = CliRunner()
     result = runner.invoke(main, ["--stop-trying-to-control-everything-and-just-let-go", "--version"])
-    assert "0.3.0" in result.output
+    assert "0.3.1" in result.output
 
 
 def test_cli_serve_status():

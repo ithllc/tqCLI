@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-04-14
+
+### Changed
+
+- **Unified thinking mode**: Gemma 4 and Qwen 3 now both have proper thinking control
+  - Gemma 4: `<|think|>` token in system instruction, `<|channel>thought...<channel|>` blocks
+  - Qwen 3: `<think>...</think>` blocks with `enable_thinking` control
+  - New `tqcli/core/thinking.py` module handles both formats transparently
+  - Router detects model family and applies correct thinking format automatically
+  - System prompt injection: `<|think|>` for Gemma 4, hints for Qwen 3
+  - Thinking depth control: "low"/"default"/"high" (Gemma 4 reduces ~20% at low)
+  - History stripping: removes thinking blocks between turns (required by Gemma 4)
+- All Gemma 4 models now have `supports_thinking=True`
+
+### Added
+
+- `tqcli/core/thinking.py` — unified thinking abstraction for both model families
+- `ThinkingFormat` enum: `QWEN3`, `GEMMA4`, `NONE`
+- `ThinkingConfig` with format, enabled, and depth fields
+- Functions: `strip_thinking_blocks()`, `extract_thinking()`, `is_inside_thinking_block()`, `strip_thinking_from_history()`, `build_system_prompt_with_thinking()`
+- 18 new tests for thinking module
+
 ## [0.3.0] - 2026-04-14
 
 ### Changed

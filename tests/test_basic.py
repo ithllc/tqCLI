@@ -10,7 +10,7 @@ import pytest
 
 def test_version():
     from tqcli import __version__
-    assert __version__ == "0.3.0"
+    assert __version__ == "0.3.1"
 
 
 def test_config_defaults():

@@ -190,7 +190,7 @@ def chat(ctx, model, engine, context_length, server_url):
     monitor = PerformanceMonitor(config.performance)
 
     # Launch interactive session
-    session = InteractiveSession(config, eng, router, monitor)
+    session = InteractiveSession(config, eng, router, monitor, model_family=target.family)
     try:
         session.run()
     finally:

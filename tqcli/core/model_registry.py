@@ -79,6 +79,7 @@ BUILTIN_PROFILES: list[ModelProfile] = [
         min_ram_mb=20000,
         min_vram_mb=18000,
         engine="llama.cpp",
+        supports_thinking=True,  # <|think|> + <|channel>thought...<channel|>
         multimodal=True,
     ),
     ModelProfile(
@@ -103,6 +104,7 @@ BUILTIN_PROFILES: list[ModelProfile] = [
         min_ram_mb=16000,
         min_vram_mb=14000,
         engine="llama.cpp",
+        supports_thinking=True,
         active_params="3.8B",
         multimodal=True,
     ),
@@ -128,6 +130,7 @@ BUILTIN_PROFILES: list[ModelProfile] = [
         min_ram_mb=4000,
         min_vram_mb=3000,
         engine="llama.cpp",
+        supports_thinking=True,
         multimodal=True,
     ),
     ModelProfile(
@@ -152,6 +155,7 @@ BUILTIN_PROFILES: list[ModelProfile] = [
         min_ram_mb=2000,
         min_vram_mb=1500,
         engine="llama.cpp",
+        supports_thinking=True,
         multimodal=True,
     ),
     # ── Qwen 3 Coder ─────────────────────────────────────────────────
