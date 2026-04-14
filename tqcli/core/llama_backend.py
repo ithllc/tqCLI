@@ -20,11 +20,15 @@ class LlamaBackend(InferenceEngine):
         n_gpu_layers: int = -1,
         n_threads: int = 0,
         verbose: bool = False,
+        cache_type_k: str = "f16",
+        cache_type_v: str = "f16",
     ):
         self._n_ctx = n_ctx
         self._n_gpu_layers = n_gpu_layers
         self._n_threads = n_threads
         self._verbose = verbose
+        self._cache_type_k = cache_type_k
+        self._cache_type_v = cache_type_v
         self._model = None
         self._model_path: str = ""
         self._chat_handler = None  # multimodal clip handler
@@ -53,6 +57,11 @@ class LlamaBackend(InferenceEngine):
         }
         if self._n_threads > 0:
             params["n_threads"] = self._n_threads
+        # TurboQuant KV cache types (requires TurboQuant fork of llama-cpp-python)
+        if self._cache_type_k != "f16":
+            params["cache_type_k"] = self._cache_type_k
+        if self._cache_type_v != "f16":
+            params["cache_type_v"] = self._cache_type_v
 
         # Multimodal: load clip model only if explicitly requested or model supports it
         clip_path = kwargs.get("clip_model_path")

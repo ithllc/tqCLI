@@ -64,8 +64,10 @@ def main(ctx, unrestricted):
 @click.option("--engine", "-e", type=click.Choice(["auto", "llama.cpp", "vllm", "server"]), default="auto")
 @click.option("--context-length", "-c", type=int, default=None)
 @click.option("--server-url", default=None, help="Connect to a running inference server (multi-process mode)")
+@click.option("--kv-quant", type=click.Choice(["auto", "none", "turbo4", "turbo3", "turbo2"]),
+              default="auto", help="TurboQuant KV cache compression level")
 @click.pass_context
-def chat(ctx, model, engine, context_length, server_url):
+def chat(ctx, model, engine, context_length, server_url, kv_quant):
     """Start an interactive chat session.
 
     Single-process (default): loads model in-process.
@@ -162,10 +164,18 @@ def chat(ctx, model, engine, context_length, server_url):
         eng = VllmBackend.from_tuning_profile(tune)
     else:
         from tqcli.core.llama_backend import LlamaBackend
+        from tqcli.core.kv_quantizer import KVQuantLevel, get_llama_kv_params, select_kv_quant
+        # Determine KV cache compression level
+        kv_level = select_kv_quant(available_kv_mb=50, engine="llama.cpp", user_choice=kv_quant)
+        kv_params = get_llama_kv_params(kv_level)
+        if kv_level != KVQuantLevel.NONE:
+            console.print(f"  [dim]TurboQuant KV: {kv_level.value} ({kv_params})[/dim]")
         eng = LlamaBackend(
             n_ctx=config.context_length,
             n_gpu_layers=config.n_gpu_layers,
             n_threads=config.threads,
+            cache_type_k=kv_params.get("cache_type_k", "f16"),
+            cache_type_v=kv_params.get("cache_type_v", "f16"),
         )
 
     if not eng.is_available:
