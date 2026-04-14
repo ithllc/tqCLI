@@ -372,6 +372,64 @@ def model_remove(ctx, model_id):
             console.print(f"[green]Removed:[/green] {path}")
 
 
+@model.command("quantize")
+@click.argument("model_id")
+@click.option("--method", type=click.Choice(["auto", "bnb", "awq", "gguf"]), default="auto")
+@click.option("--bits", type=click.Choice(["4", "8"]), default="4")
+def model_quantize(model_id, method, bits):
+    """Show quantization info and recommendations for a model.
+
+    Displays the model's current format, estimated BF16 size, recommended
+    quantization method for the current hardware, and expected quantized size.
+    On-the-fly quantization (bitsandbytes) is applied automatically at load time.
+    """
+    from tqcli.config import TqConfig
+    from tqcli.core.model_registry import ModelRegistry
+    from tqcli.core.quantizer import (
+        QuantizationMethod,
+        estimate_bf16_model_size,
+        estimate_quantized_size,
+        select_quantization,
+    )
+    from tqcli.core.system_info import detect_system
+    from tqcli.ui.console import console
+
+    config = TqConfig.load()
+    registry = ModelRegistry(config.models_dir)
+    profile = registry.get_profile(model_id)
+    if not profile:
+        console.print(f"[red]Unknown model: {model_id}[/red]")
+        return
+
+    sys_info = detect_system()
+    bf16_size = estimate_bf16_model_size(profile)
+    recommended = select_quantization(profile, sys_info)
+
+    console.print(f"\n[bold]Quantization Info: {profile.display_name}[/bold]\n")
+    console.print(f"  Current format:    {profile.quantization} ({profile.format})")
+    console.print(f"  Parameter count:   {profile.parameter_count}")
+    console.print(f"  Estimated BF16:    {bf16_size:,} MB")
+    console.print(f"  Available VRAM:    {sys_info.total_vram_mb:,} MB")
+
+    if recommended == QuantizationMethod.NONE:
+        console.print(f"\n  [green]No quantization needed — model fits at current precision.[/green]")
+    elif recommended == QuantizationMethod.BNB_INT4:
+        q_size = estimate_quantized_size(profile, QuantizationMethod.BNB_INT4)
+        console.print(f"\n  [yellow]Recommended: bitsandbytes INT4[/yellow]")
+        console.print(f"  Quantized size:    ~{q_size:,} MB ({q_size/bf16_size*100:.0f}% of BF16)")
+        console.print(f"  Method:            On-the-fly at load time (no pre-quantization)")
+        console.print(f"\n  This will be applied automatically when you run:")
+        console.print(f"    tqcli chat --engine vllm --model {model_id}")
+    elif recommended == QuantizationMethod.BNB_INT8:
+        q_size = estimate_quantized_size(profile, QuantizationMethod.BNB_INT8)
+        console.print(f"\n  [yellow]Recommended: bitsandbytes INT8[/yellow]")
+        console.print(f"  Quantized size:    ~{q_size:,} MB ({q_size/bf16_size*100:.0f}% of BF16)")
+    elif recommended is None:
+        console.print(f"\n  [red]Model too large for this GPU even after INT4 quantization.[/red]")
+        int4_size = estimate_quantized_size(profile, QuantizationMethod.BNB_INT4)
+        console.print(f"  INT4 size:         ~{int4_size:,} MB (still exceeds VRAM)")
+
+
 # ── Benchmark ─────────────────────────────────────────────────────────
 
 

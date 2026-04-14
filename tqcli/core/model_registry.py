@@ -309,8 +309,11 @@ BUILTIN_PROFILES: list[ModelProfile] = [
     # These profiles use HuggingFace model repos (not single GGUF files).
     # vLLM loads the entire repo, so filename is empty and format reflects
     # the quantization method.  model_pull downloads the full snapshot.
-    # Gemma 4 vLLM profiles — VRAM requirements from official vLLM Gemma 4 recipe:
-    # E2B BF16 ~5 GB, E4B BF16 ~9 GB.  Both need ~15% framework overhead.
+    # Gemma 4 vLLM profiles.  Official recipe says 24 GB+ for production
+    # (131K context), but actual model weights are much smaller:
+    #   E2B: ~2.6 GB text + ~1 GB vision/audio = ~3.6 GB BF16
+    #   E4B: ~5 GB text + ~1 GB vision/audio = ~6 GB BF16
+    # With enforce_eager + short context, E2B can run on 4 GB VRAM.
     # Multimodal: image + audio + video via SigLIP encoder.
     ModelProfile(
         id="gemma-4-e2b-it-vllm",
@@ -331,8 +334,8 @@ BUILTIN_PROFILES: list[ModelProfile] = [
             "creative": 0.52,
             "instruction": 0.55,
         },
-        min_ram_mb=6000,
-        min_vram_mb=6000,  # ~5 GB model + overhead; 6 GB safe minimum
+        min_ram_mb=4500,
+        min_vram_mb=3500,  # ~3.6 GB model weights BF16 (text+vision+audio)
         engine="vllm",
         supports_thinking=True,
         multimodal=True,
@@ -356,11 +359,35 @@ BUILTIN_PROFILES: list[ModelProfile] = [
             "creative": 0.65,
             "instruction": 0.70,
         },
-        min_ram_mb=12000,
-        min_vram_mb=10000,  # ~9 GB model + overhead; 10 GB safe minimum
+        min_ram_mb=8000,
+        min_vram_mb=6000,  # ~6 GB model weights BF16 (text+vision+audio)
         engine="vllm",
         supports_thinking=True,
         multimodal=True,
+    ),
+    ModelProfile(
+        id="qwen3-4b-vllm",
+        family="qwen3",
+        display_name="Qwen3 4B (vLLM BF16)",
+        hf_repo="Qwen/Qwen3-4B",
+        filename="",
+        parameter_count="4B",
+        quantization="BF16",
+        format="safetensors",
+        context_length=32768,
+        strengths=[TaskDomain.GENERAL, TaskDomain.INSTRUCTION],
+        strength_scores={
+            "coding": 0.58,
+            "reasoning": 0.68,
+            "general": 0.70,
+            "math": 0.62,
+            "creative": 0.62,
+            "instruction": 0.68,
+        },
+        min_ram_mb=8000,
+        min_vram_mb=3000,  # After bnb INT4 quantization: ~2.5 GB
+        engine="vllm",
+        supports_thinking=True,
     ),
     ModelProfile(
         id="qwen3-4b-AWQ",

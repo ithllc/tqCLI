@@ -19,6 +19,7 @@ class VllmBackend(InferenceEngine):
         max_model_len: int = 4096,
         gpu_memory_utilization: float = 0.80,
         quantization: str | None = None,
+        load_format: str | None = None,
         tensor_parallel_size: int = 1,
         kv_cache_dtype: str = "auto",
         enforce_eager: bool = False,
@@ -26,6 +27,7 @@ class VllmBackend(InferenceEngine):
         self._max_model_len = max_model_len
         self._gpu_memory_utilization = gpu_memory_utilization
         self._quantization = quantization
+        self._load_format = load_format
         self._tensor_parallel_size = tensor_parallel_size
         self._kv_cache_dtype = kv_cache_dtype
         self._enforce_eager = enforce_eager
@@ -40,6 +42,7 @@ class VllmBackend(InferenceEngine):
             max_model_len=profile.max_model_len,
             gpu_memory_utilization=profile.gpu_memory_utilization,
             quantization=profile.quantization,
+            load_format=profile.load_format,
             tensor_parallel_size=profile.tensor_parallel_size,
             kv_cache_dtype=profile.kv_cache_dtype,
             enforce_eager=profile.enforce_eager,
@@ -76,6 +79,8 @@ class VllmBackend(InferenceEngine):
             params["enforce_eager"] = True
         if self._quantization:
             params["quantization"] = self._quantization
+        if self._load_format:
+            params["load_format"] = self._load_format
         if self._kv_cache_dtype != "auto":
             params["kv_cache_dtype"] = self._kv_cache_dtype
 

@@ -1,8 +1,12 @@
 """Hardware-aware vLLM configuration builder.
 
 Automatically tunes vLLM parameters based on detected GPU VRAM, model size,
-and model capabilities.  Based on the official vLLM Gemma 4 recipe:
-https://docs.vllm.ai/projects/recipes/en/latest/Google/Gemma4.html
+and model capabilities.  Uses the quantizer module to select bitsandbytes
+INT4 quantization when BF16 models exceed available VRAM.
+
+References:
+  - vLLM Gemma 4 recipe: docs.vllm.ai/projects/recipes/en/latest/Google/Gemma4.html
+  - TurboQuant methodology: GoogleTurboQuant workspace
 """
 
 from __future__ import annotations
@@ -10,6 +14,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from tqcli.core.model_registry import ModelProfile
+from tqcli.core.quantizer import (
+    QuantizationMethod,
+    estimate_bf16_model_size,
+    estimate_quantized_size,
+    get_vllm_quantization_params,
+    select_quantization,
+)
 from tqcli.core.system_info import SystemInfo
 
 
@@ -21,9 +32,12 @@ class VllmTuningProfile:
     max_model_len: int = 4096
     enforce_eager: bool = False
     quantization: str | None = None
+    load_format: str | None = None
     kv_cache_dtype: str = "auto"
     tensor_parallel_size: int = 1
     trust_remote_code: bool = True
+    quantization_method: QuantizationMethod = QuantizationMethod.NONE
+    estimated_model_size_mb: int = 0
     # Multimodal settings (Gemma 4)
     mm_processor_kwargs: dict = field(default_factory=dict)
     limit_mm_per_prompt: dict = field(default_factory=dict)
@@ -34,12 +48,14 @@ class VllmTuningProfile:
     reason: str = ""
 
 
-# CUDA context overhead per GPU in MB.  Measured from vLLM's reported
-# free memory vs total: on WSL2 ~810 MB, on bare-metal Linux ~400 MB.
+# CUDA context overhead per GPU in MB.
 _CUDA_CONTEXT_OVERHEAD_MB = 400
 
-# Minimum KV cache memory in MB to be usable (enough for ~128 tokens)
+# Minimum KV cache memory in MB
 _MIN_KV_CACHE_MB = 30
+
+# vLLM runtime overhead (activations, NCCL, workspace)
+_VLLM_RUNTIME_OVERHEAD_MB = 700
 
 
 def build_vllm_config(
@@ -49,13 +65,8 @@ def build_vllm_config(
 ) -> VllmTuningProfile:
     """Build a hardware-tuned vLLM configuration for the given model.
 
-    Args:
-        model: The model profile to configure for.
-        sys_info: Detected system hardware info.
-        requested_max_len: Desired context length (auto-tuned if None).
-
-    Returns:
-        A VllmTuningProfile with all parameters set.
+    Automatically selects bitsandbytes INT4 quantization when the BF16
+    model exceeds available VRAM.
     """
     profile = VllmTuningProfile()
     total_vram_mb = sys_info.total_vram_mb
@@ -66,18 +77,47 @@ def build_vllm_config(
         profile.reason = "No GPU detected; vLLM requires NVIDIA GPU"
         return profile
 
-    # ── Step 1: Estimate model weight memory ──────────────────────────
-    # Use min_vram_mb from registry as a proxy for model weight footprint
-    model_weight_mb = model.min_vram_mb * 0.85  # weights are ~85% of min_vram
+    # ── Step 1: Select quantization method ────────────────────────────
+    quant_method = select_quantization(model, sys_info)
 
-    # ── Step 2: Calculate usable VRAM after CUDA context ──────────────
+    if quant_method is None:
+        bf16_size = estimate_bf16_model_size(model)
+        profile.feasible = False
+        profile.reason = (
+            f"Model too large even after INT4 quantization: "
+            f"BF16={bf16_size} MB, VRAM={total_vram_mb} MB"
+        )
+        return profile
+
+    profile.quantization_method = quant_method
+
+    # ── Step 2: Calculate model size after quantization ───────────────
+    if quant_method == QuantizationMethod.NONE:
+        model_weight_mb = estimate_bf16_model_size(model)
+        # For already-quantized models (AWQ), use their native quant params
+        if model.quantization == "AWQ":
+            profile.quantization = "awq_marlin"
+        elif model.quantization in ("GPTQ", "FP8"):
+            profile.quantization = model.quantization.lower()
+    else:
+        model_weight_mb = estimate_quantized_size(model, quant_method)
+        vllm_params = get_vllm_quantization_params(quant_method)
+        profile.quantization = vllm_params.get("quantization")
+        profile.load_format = vllm_params.get("load_format")
+        bf16_size = estimate_bf16_model_size(model)
+        warnings.append(
+            f"BF16 model ({bf16_size} MB) will be quantized to {quant_method.value} "
+            f"(~{model_weight_mb} MB) via bitsandbytes"
+        )
+
+    profile.estimated_model_size_mb = model_weight_mb
+
+    # ── Step 3: Calculate usable VRAM ─────────────────────────────────
     overhead_mb = _CUDA_CONTEXT_OVERHEAD_MB
     if sys_info.is_wsl:
-        overhead_mb = 810  # WSL2 takes more (measured: ~807 MB on RTX A2000)
+        overhead_mb = 810
     usable_vram_mb = total_vram_mb - overhead_mb
 
-    # ── Step 3: Determine gpu_memory_utilization ──────────────────────
-    # vLLM checks: util * total_vram <= free_vram_after_cuda_init
     if usable_vram_mb <= 0:
         profile.feasible = False
         profile.reason = f"Insufficient VRAM: {total_vram_mb} MB total, ~{overhead_mb} MB CUDA overhead"
@@ -86,34 +126,26 @@ def build_vllm_config(
     max_util = usable_vram_mb / total_vram_mb
     profile.gpu_memory_utilization = min(round(max_util, 2), 0.95)
 
-    # ── Step 4: Determine if we need enforce_eager ────────────────────
-    # torch.compile + CUDA graphs add 500 MB - 2 GB overhead.
-    # On GPUs < 8 GB, this often pushes us OOM.
+    # ── Step 4: enforce_eager on small GPUs ───────────────────────────
     if total_vram_mb < 8000:
         profile.enforce_eager = True
         warnings.append("enforce_eager=True (saves ~1 GB VRAM on small GPUs)")
 
-    # ── Step 5: Estimate available KV cache memory ────────────────────
-    # vLLM runtime overhead includes activation memory, NCCL buffers,
-    # weight unpacking buffers, and internal allocations (~500-700 MB).
-    vllm_runtime_overhead_mb = 600
-    model_loaded_mb = model_weight_mb + vllm_runtime_overhead_mb
+    # ── Step 5: Available KV cache memory ─────────────────────────────
+    model_loaded_mb = model_weight_mb + _VLLM_RUNTIME_OVERHEAD_MB
     if not profile.enforce_eager:
-        model_loaded_mb += 500  # torch.compile + CUDA graph overhead
+        model_loaded_mb += 500  # torch.compile overhead
     available_for_kv_mb = (profile.gpu_memory_utilization * total_vram_mb) - model_loaded_mb
 
     if available_for_kv_mb < _MIN_KV_CACHE_MB:
         profile.feasible = False
         profile.reason = (
-            f"Insufficient VRAM for KV cache: model needs ~{model_loaded_mb:.0f} MB, "
-            f"only {profile.gpu_memory_utilization * total_vram_mb:.0f} MB usable "
-            f"({total_vram_mb} MB total, {overhead_mb} MB overhead)"
+            f"Insufficient VRAM for KV cache: model+overhead needs ~{model_loaded_mb:.0f} MB, "
+            f"only {profile.gpu_memory_utilization * total_vram_mb:.0f} MB usable"
         )
         return profile
 
-    # ── Step 6: Use FP8 KV cache if beneficial ───────────────────────
-    # FP8 KV cache halves KV memory, doubling effective context length.
-    # Only available on Ampere+ GPUs (compute capability >= 8.0).
+    # ── Step 6: FP8 KV cache on Hopper+ ──────────────────────────────
     gpu_cc = ""
     if sys_info.gpus:
         gpu_cc = sys_info.gpus[0].compute_capability
@@ -124,41 +156,30 @@ def build_vllm_config(
         except (ValueError, IndexError):
             pass
 
-    if cc_major >= 9 and available_for_kv_mb < 500:  # FP8 native on Hopper+ (cc >= 9.0)
+    if cc_major >= 9 and available_for_kv_mb < 500:
         profile.kv_cache_dtype = "fp8"
-        available_for_kv_mb *= 2  # FP8 doubles effective KV capacity
+        available_for_kv_mb *= 2
         warnings.append("kv_cache_dtype=fp8 (doubles KV cache capacity)")
 
-    # ── Step 7: Calculate max_model_len ───────────────────────────────
-    # Rough estimate: each token of KV cache uses ~0.14 MB per billion params
-    # for a dense transformer with FP16 KV.
+    # ── Step 7: max_model_len ─────────────────────────────────────────
     param_billions = _parse_param_count(model.parameter_count)
     kv_per_token_mb = 0.14 * param_billions
     if profile.kv_cache_dtype == "fp8":
         kv_per_token_mb *= 0.5
 
     max_tokens_from_kv = int(available_for_kv_mb / max(kv_per_token_mb, 0.01))
-    max_tokens_from_kv = max(max_tokens_from_kv, 128)  # absolute minimum
+    max_tokens_from_kv = max(max_tokens_from_kv, 128)
 
     if requested_max_len:
         profile.max_model_len = min(requested_max_len, max_tokens_from_kv, model.context_length)
     else:
-        # Auto-select: use available KV budget, capped at model max
         profile.max_model_len = min(max_tokens_from_kv, model.context_length, 8192)
 
     if profile.max_model_len < 256:
         warnings.append(f"Very short context ({profile.max_model_len} tokens) due to limited VRAM")
 
-    # ── Step 8: Quantization ──────────────────────────────────────────
-    if model.quantization == "AWQ":
-        profile.quantization = "awq_marlin"
-    elif model.quantization in ("GPTQ", "FP8"):
-        profile.quantization = model.quantization.lower()
-
-    # ── Step 9: Multimodal configuration (Gemma 4) ────────────────────
+    # ── Step 8: Multimodal (Gemma 4) ──────────────────────────────────
     if model.multimodal and model.family == "gemma4":
-        # Gemma 4 SigLIP vision: 70/140/280/560/1120 tokens per image
-        # Use smaller budget on low-VRAM
         if total_vram_mb < 12000:
             vision_budget = 70
         elif total_vram_mb < 24000:
@@ -172,7 +193,7 @@ def build_vllm_config(
             profile.limit_mm_per_prompt = {"image": 1, "audio": 0}
             warnings.append("Multimodal limited to 1 image, no audio (low VRAM)")
 
-    # ── Step 10: Thinking mode ────────────────────────────────────────
+    # ── Step 9: Thinking mode ─────────────────────────────────────────
     if model.supports_thinking and model.family == "gemma4":
         profile.reasoning_parser = "gemma4"
 
@@ -186,4 +207,4 @@ def _parse_param_count(param_str: str) -> float:
     try:
         return float(s)
     except ValueError:
-        return 4.0  # default assumption
+        return 4.0

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tqcli"
-version = "0.3.3"
+version = "0.4.0"
 description = "TurboQuant CLI — local LLM inference with smart model routing, performance monitoring, and TurboQuant methodologies"
 readme = "README.md"
 license = {text = "MIT"}
@@ -37,7 +37,7 @@ dependencies = [
 
 [project.optional-dependencies]
 llama = ["llama-cpp-python[server]>=0.3.0"]
-vllm = ["vllm>=0.6.0"]
+vllm = ["vllm>=0.6.0", "bitsandbytes>=0.43.0", "accelerate>=0.30.0"]
 all = ["tqcli[llama,vllm]"]
 dev = ["pytest>=7.0", "ruff>=0.4"]
 

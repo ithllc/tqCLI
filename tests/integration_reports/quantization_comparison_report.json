@@ -1,0 +1,211 @@
+{
+  "system_info": {
+    "os": "Linux (Ubuntu 22.04.4 LTS) (WSL2)",
+    "arch": "x86_64",
+    "cpu_cores": 16,
+    "ram_total_mb": 31956,
+    "ram_available_mb": 24804,
+    "gpu": "NVIDIA RTX A2000 Laptop GPU",
+    "vram_mb": 4096,
+    "is_wsl": true
+  },
+  "results": [
+    {
+      "test_name": "Test 1: vLLM Gemma 4 BF16 \u2192 bitsandbytes INT4",
+      "model_id": "",
+      "engine": "vllm",
+      "quantization": "bitsandbytes INT4",
+      "started": "2026-04-14 13:02:57",
+      "finished": "2026-04-14 13:03:00",
+      "total_duration_s": 0.0,
+      "passed": true,
+      "pass_count": 3,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "try_gemma-4-e4b-it-vllm",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "gemma-4-e4b-it-vllm rejected: Model too large even after INT4 quantization: BF16=16216 MB, VRAM=4096 MB. Trying next...",
+          "metrics": {}
+        },
+        {
+          "name": "try_gemma-4-e2b-it-vllm",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "gemma-4-e2b-it-vllm rejected: Model too large even after INT4 quantization: BF16=11710 MB, VRAM=4096 MB. Trying next...",
+          "metrics": {}
+        },
+        {
+          "name": "model_selection",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "No Gemma 4 vLLM model fits 4 GB VRAM even after INT4 quantization. Gemma 4 multimodal stack (vision+audio) is ~7 GB BF16 (~2.5 GB INT4), plus text decoder. Requires 8+ GB VRAM minimum. [EXPECTED HW LIMITATION]",
+          "metrics": {}
+        }
+      ]
+    },
+    {
+      "test_name": "Test 2: vLLM Qwen 3 4B BF16 \u2192 bitsandbytes INT4",
+      "model_id": "qwen3-4b-vllm",
+      "engine": "vllm",
+      "quantization": "bitsandbytes INT4",
+      "started": "2026-04-14 13:03:00",
+      "finished": "2026-04-14 13:03:03",
+      "total_duration_s": 0.0,
+      "passed": true,
+      "pass_count": 1,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "quantization_assessment",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "bitsandbytes INT4 infeasible on 4096 MB VRAM: Model too large even after INT4 quantization: BF16=8192 MB, VRAM=4096 MB. bitsandbytes uses ~15% more VRAM than pre-quantized AWQ due to dequantization buffers. Recommend pre-quantized AWQ (Qwen/Qwen3-4B-AWQ) for 4 GB systems. [EXPECTED HW LIMITATION]",
+          "metrics": {
+            "reason": "Model too large even after INT4 quantization: BF16=8192 MB, VRAM=4096 MB",
+            "vram_mb": 4096
+          }
+        }
+      ]
+    },
+    {
+      "test_name": "Test 3: llama.cpp Gemma 4 E4B GGUF Q4_K_M (baseline)",
+      "model_id": "gemma-4-e4b-it-Q4_K_M",
+      "engine": "llama.cpp",
+      "quantization": "Q4_K_M (pre-quantized GGUF)",
+      "started": "2026-04-14 13:03:03",
+      "finished": "2026-04-14 13:09:45",
+      "total_duration_s": 401.8907644748688,
+      "passed": true,
+      "pass_count": 6,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "download_gguf_model",
+          "passed": true,
+          "duration_s": 319.25369811058044,
+          "details": "Downloaded gemma-4-E4B-it-Q4_K_M.gguf (4747 MB)",
+          "metrics": {
+            "size_mb": 4746.6,
+            "cached": false
+          }
+        },
+        {
+          "name": "load_model_llama",
+          "passed": true,
+          "duration_s": 26.644532203674316,
+          "details": "Loaded Gemma 4 E4B Edge Instruct (Q4_K_M) in 26.6s",
+          "metrics": {
+            "load_time_s": 26.64
+          }
+        },
+        {
+          "name": "chat_turn_1",
+          "passed": true,
+          "duration_s": 45.110289335250854,
+          "details": "Response (32 chars):  The capital of France is Paris....",
+          "metrics": {
+            "tokens_per_second": 0.16,
+            "completion_tokens": 7,
+            "total_time_s": 45.11
+          }
+        },
+        {
+          "name": "chat_turn_2",
+          "passed": true,
+          "duration_s": 7.034104824066162,
+          "details": "Response (2 chars): 56...",
+          "metrics": {
+            "tokens_per_second": 0.28,
+            "completion_tokens": 2,
+            "total_time_s": 7.03
+          }
+        },
+        {
+          "name": "remove_model",
+          "passed": true,
+          "duration_s": 0.7369651794433594,
+          "details": "Removed /root/.tqcli/models/gemma-4-E4B-it-Q4_K_M.gguf",
+          "metrics": {}
+        },
+        {
+          "name": "clean_uninstall_check",
+          "passed": true,
+          "duration_s": 3.1111748218536377,
+          "details": "Package installed and uninstallable",
+          "metrics": {}
+        }
+      ]
+    },
+    {
+      "test_name": "Test 4: llama.cpp Qwen 3 4B GGUF Q4_K_M (baseline)",
+      "model_id": "qwen3-4b-Q4_K_M",
+      "engine": "llama.cpp",
+      "quantization": "Q4_K_M (pre-quantized GGUF)",
+      "started": "2026-04-14 13:09:45",
+      "finished": "2026-04-14 13:11:46",
+      "total_duration_s": 120.46013331413269,
+      "passed": true,
+      "pass_count": 6,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "download_gguf_model",
+          "passed": true,
+          "duration_s": 44.553237438201904,
+          "details": "Downloaded Qwen3-4B-Q4_K_M.gguf (2382 MB)",
+          "metrics": {
+            "size_mb": 2381.6,
+            "cached": false
+          }
+        },
+        {
+          "name": "load_model_llama",
+          "passed": true,
+          "duration_s": 3.8868043422698975,
+          "details": "Loaded Qwen3 4B (Q4_K_M) in 3.9s",
+          "metrics": {
+            "load_time_s": 3.89
+          }
+        },
+        {
+          "name": "chat_turn_1",
+          "passed": true,
+          "duration_s": 34.01811170578003,
+          "details": "Response (401 chars): <think>\nOkay, the user is asking what 2 plus 2 is and wants the answer as just the number. Let me think. Basic math problem. 2 + 2 equals 4. That's straightforward. I need to make sure there's no tric...",
+          "metrics": {
+            "tokens_per_second": 3.12,
+            "completion_tokens": 106,
+            "total_time_s": 34.02
+          }
+        },
+        {
+          "name": "chat_turn_2",
+          "passed": true,
+          "duration_s": 34.52199411392212,
+          "details": "Response (317 chars): <think>\nOkay, the user is asking for 7 times 8. Let me recall the multiplication table. 7 multiplied by 8... Hmm, 7 times 8 is 56. Wait, let me double-check to be sure. 7 times 10 is 70, so subtract 7...",
+          "metrics": {
+            "tokens_per_second": 3.04,
+            "completion_tokens": 105,
+            "total_time_s": 34.52
+          }
+        },
+        {
+          "name": "remove_model",
+          "passed": true,
+          "duration_s": 0.3714175224304199,
+          "details": "Removed /root/.tqcli/models/Qwen3-4B-Q4_K_M.gguf",
+          "metrics": {}
+        },
+        {
+          "name": "clean_uninstall_check",
+          "passed": true,
+          "duration_s": 3.1085681915283203,
+          "details": "Package installed and uninstallable",
+          "metrics": {}
+        }
+      ]
+    }
+  ]
+}
