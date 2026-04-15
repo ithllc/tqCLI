@@ -43,6 +43,8 @@ class VllmTuningProfile:
     limit_mm_per_prompt: dict = field(default_factory=dict)
     # Gemma 4 thinking mode
     reasoning_parser: str = ""
+    # CPU offloading: spill excess model weight into system RAM
+    cpu_offload_gb: float = 0
     warnings: list[str] = field(default_factory=list)
     feasible: bool = True
     reason: str = ""
@@ -82,13 +84,32 @@ def build_vllm_config(
     quant_method = select_quantization(model, sys_info)
 
     if quant_method is None:
-        bf16_size = estimate_bf16_model_size(model)
-        profile.feasible = False
-        profile.reason = (
-            f"Model too large even after INT4 quantization: "
-            f"BF16={bf16_size} MB, VRAM={total_vram_mb} MB"
-        )
-        return profile
+        # Model too large for VRAM even with INT4 — try CPU offloading
+        # Use INT4 quantization + offload the excess to system RAM
+        available_ram_mb = sys_info.ram_available_mb
+        int4_size = estimate_quantized_size(model, QuantizationMethod.BNB_INT4)
+        cuda_overhead = 810 if sys_info.is_wsl else 400
+        available_for_model = total_vram_mb - cuda_overhead - 700 - 50
+        excess_mb = int4_size - available_for_model
+
+        if excess_mb > 0 and available_ram_mb > excess_mb + 2000:
+            # We have enough system RAM to offload the excess
+            quant_method = QuantizationMethod.BNB_INT4
+            offload_gb = round((excess_mb / 1024) + 0.5, 1)  # round up with margin
+            profile.cpu_offload_gb = offload_gb
+            bf16_size = estimate_bf16_model_size(model)
+            warnings.append(
+                f"Model exceeds VRAM (INT4={int4_size} MB > {available_for_model} MB available). "
+                f"CPU offloading {offload_gb} GB to system RAM ({available_ram_mb} MB available)."
+            )
+        else:
+            bf16_size = estimate_bf16_model_size(model)
+            profile.feasible = False
+            profile.reason = (
+                f"Model too large even after INT4 quantization: "
+                f"BF16={bf16_size} MB, VRAM={total_vram_mb} MB"
+            )
+            return profile
 
     profile.quantization_method = quant_method
 
@@ -133,7 +154,11 @@ def build_vllm_config(
         warnings.append("enforce_eager=True (saves ~1 GB VRAM on small GPUs)")
 
     # ── Step 5: Available KV cache memory ─────────────────────────────
-    model_loaded_mb = model_weight_mb + _VLLM_RUNTIME_OVERHEAD_MB
+    model_in_vram_mb = model_weight_mb
+    if profile.cpu_offload_gb > 0:
+        # With CPU offloading, only part of the model stays in VRAM
+        model_in_vram_mb = max(model_weight_mb - int(profile.cpu_offload_gb * 1024), 0)
+    model_loaded_mb = model_in_vram_mb + _VLLM_RUNTIME_OVERHEAD_MB
     if not profile.enforce_eager:
         model_loaded_mb += 500  # torch.compile overhead
     available_for_kv_mb = (profile.gpu_memory_utilization * total_vram_mb) - model_loaded_mb

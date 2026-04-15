@@ -1,0 +1,109 @@
+{
+  "generated": "2026-04-15T14:17:33",
+  "test_name": "Gemma 4 E2B vLLM + CPU Offloading + BNB_INT4 + TurboQuant KV",
+  "system": {
+    "os": "Linux (Ubuntu 22.04.4 LTS) (WSL2)",
+    "gpu": "NVIDIA RTX A2000 Laptop GPU",
+    "vram_mb": 4096,
+    "ram_total_mb": 31956,
+    "ram_available_mb": 24389,
+    "cuda_toolkit": "12.8",
+    "compute_capability": "8.6",
+    "is_wsl": true
+  },
+  "pipeline_config": {
+    "weight_quantization": "bnb_int4",
+    "cpu_offload_gb": 2.1,
+    "kv_compression": "turboquant35",
+    "max_model_len": 2048,
+    "pipeline_path": "detect full_precision \u2192 weight:bnb_int4 \u2192 cpu_offload \u2192 kv:turboquant35"
+  },
+  "steps": [
+    {
+      "name": "find_model_profile",
+      "passed": true,
+      "duration_s": 0.0,
+      "details": "Found gemma-4-e2b-it-vllm: Gemma 4 E2B Edge Instruct (vLLM BF16) (2.3B, BF16)",
+      "metrics": {
+        "model_id": "gemma-4-e2b-it-vllm",
+        "parameter_count": "2.3B",
+        "quantization": "BF16",
+        "format": "safetensors",
+        "multimodal": true
+      }
+    },
+    {
+      "name": "detect_precision",
+      "passed": true,
+      "duration_s": 0.0,
+      "details": "Detected: full_precision (quant=BF16, format=safetensors)",
+      "metrics": {
+        "precision": "full_precision"
+      }
+    },
+    {
+      "name": "size_estimates",
+      "passed": true,
+      "duration_s": 0.0,
+      "details": "BF16=11710 MB, INT4=4145 MB, VRAM=4096 MB, RAM=24079 MB",
+      "metrics": {
+        "bf16_mb": 11710,
+        "int4_mb": 4145,
+        "vram_mb": 4096,
+        "ram_available_mb": 24079
+      }
+    },
+    {
+      "name": "select_quantization_without_offload",
+      "passed": true,
+      "duration_s": 0.0,
+      "details": "select_quantization() returned: None (expected None \u2014 too large for VRAM alone)",
+      "metrics": {
+        "method": "None",
+        "expected": "None"
+      }
+    },
+    {
+      "name": "build_vllm_config_with_offload",
+      "passed": true,
+      "duration_s": 0.00011515617370605469,
+      "details": "feasible=True | cpu_offload_gb=2.1 | quantization=bitsandbytes | kv_cache_dtype=turboquant35 | max_model_len=2048",
+      "metrics": {
+        "feasible": true,
+        "cpu_offload_gb": 2.1,
+        "quantization": "bitsandbytes",
+        "load_format": "bitsandbytes",
+        "kv_cache_dtype": "turboquant35",
+        "max_model_len": 2048,
+        "gpu_memory_utilization": 0.8,
+        "enforce_eager": true,
+        "estimated_model_size_mb": 4145,
+        "warnings": [
+          "Model exceeds VRAM (INT4=4145 MB > 2536 MB available). CPU offloading 2.1 GB to system RAM (24079 MB available).",
+          "BF16 model (11710 MB) will be quantized to bnb_int4 (~4145 MB) via bitsandbytes",
+          "enforce_eager=True (saves ~1 GB VRAM on small GPUs)",
+          "kv_cache_dtype=turboquant35 (TurboQuant turbo3: 4.6x KV compression)",
+          "Multimodal limited to 1 image, no audio (low VRAM)"
+        ],
+        "reason": ""
+      }
+    },
+    {
+      "name": "model_available",
+      "passed": true,
+      "duration_s": 0.0,
+      "details": "Model already downloaded at /root/.tqcli/models/gemma-4-e2b-it-vllm",
+      "metrics": {}
+    },
+    {
+      "name": "load_model_with_cpu_offload",
+      "passed": false,
+      "duration_s": 8.100524425506592,
+      "details": "Load failed: 1 validation error for ModelConfig\n  Value error, The checkpoint you are trying to load has model type `gemma4` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade transformers`. If this does not work, and the checkpoint is very new, then there may not be a release version that supports this model yet. In this case, you can get the most up-to-date code by installing Transformers from source with the command `pip install git+https://github.com/huggingface/transformers.git` [type=value_error, input_value=ArgsKwargs((), {'model': ...rocessor_plugin': None}), input_type=ArgsKwargs]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error",
+      "metrics": {
+        "error": "1 validation error for ModelConfig\n  Value error, The checkpoint you are trying to load has model type `gemma4` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade transformers`. If this does not work, and the checkpoint is very new, then there may not be a release version that supports this model yet. In this case, you can get the most up-to-date code by installing Transformers from source with the command `pip install git+https://github.com/huggingface/transformers.git` [type=value_error, input_value=ArgsKwargs((), {'model': ...rocessor_plugin': None}), input_type=ArgsKwargs]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+      }
+    }
+  ],
+  "passed": false
+}

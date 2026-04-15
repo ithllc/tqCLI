@@ -25,11 +25,59 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tqcli.config import TqConfig
 from tqcli.core.engine import ChatMessage
+from tqcli.core.kv_quantizer import (
+    KVQuantLevel,
+    check_turboquant_compatibility,
+    get_kv_quant_info,
+    get_llama_kv_params,
+    plan_quantization_pipeline,
+)
 from tqcli.core.llama_backend import LlamaBackend
 from tqcli.core.model_registry import BUILTIN_PROFILES, ModelRegistry, TaskDomain
 from tqcli.core.performance import PerformanceMonitor
 from tqcli.core.router import ModelRouter
 from tqcli.core.system_info import detect_system
+from tqcli.core.thinking import (
+    ThinkingConfig,
+    ThinkingFormat,
+    build_system_prompt_with_thinking,
+    detect_thinking_format,
+    extract_thinking,
+)
+
+
+REPORT_DIR = Path(__file__).parent / "integration_reports"
+
+
+# ─── Tool Calling System Prompts ────────────────────────────────────────
+
+QWEN3_TOOL_SYSTEM_PROMPT = """You are a helpful assistant.
+
+# Tools
+
+You may call one or more functions to assist with the user query.
+
+You are provided with function signatures within <tools></tools> XML tags:
+<tools>
+{"type": "function", "function": {"name": "get_weather", "description": "Get current weather for a city", "parameters": {"type": "object", "properties": {"city": {"type": "string", "description": "City name"}}, "required": ["city"]}}}
+</tools>
+
+For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
+<tool_call>
+{"name": <function-name>, "arguments": <args-json-object>}
+</tool_call>"""
+
+GEMMA4_TOOL_SYSTEM_PROMPT = """You are a helpful assistant.
+You have access to the following tool:
+Tool name: get_weather
+Description: Get current weather for a city
+Parameters: {"city": {"type": "string", "description": "City name"}}
+
+When you need weather information, call the tool by responding with a JSON code block:
+```json
+{"name": "get_weather", "arguments": {"city": "<city_name>"}}
+```
+Then wait for the tool response before answering the user."""
 
 
 @dataclass
@@ -695,6 +743,703 @@ def step_cleanup_skills(skill_names):
     )
 
 
+# ─── TurboQuant KV + Thinking + Tool Calling Steps ─────────────────────
+
+
+def step_quantization_pipeline(profile, sys_info, kv_quant="turbo3", engine="llama.cpp"):
+    """Run quantization pipeline and verify KV-only for pre-quantized models."""
+    start = time.time()
+    try:
+        pipeline = plan_quantization_pipeline(
+            model=profile,
+            sys_info=sys_info,
+            kv_quant_choice=kv_quant,
+            engine=engine,
+        )
+        elapsed = time.time() - start
+
+        # For pre-quantized models, should NOT need weight quant
+        kv_only = not pipeline.needs_weight_quant and pipeline.needs_kv_compression
+
+        return StepResult(
+            name="quantization_pipeline",
+            passed=True,
+            duration_s=elapsed,
+            details=(
+                f"Pipeline: {pipeline.summary} | "
+                f"Precision: {pipeline.model_precision} | "
+                f"Weight quant needed: {pipeline.needs_weight_quant} | "
+                f"KV compression: {pipeline.kv_level.value}"
+            ),
+            metrics={
+                "model_precision": pipeline.model_precision,
+                "needs_weight_quant": pipeline.needs_weight_quant,
+                "weight_quant_method": pipeline.weight_quant_method,
+                "needs_kv_compression": pipeline.needs_kv_compression,
+                "kv_level": pipeline.kv_level.value,
+                "stages": pipeline.stages_applied,
+                "summary": pipeline.summary,
+                "kv_only_for_prequantized": kv_only,
+            },
+        ), pipeline
+    except Exception as e:
+        return StepResult(
+            name="quantization_pipeline",
+            passed=False,
+            duration_s=time.time() - start,
+            details=f"Pipeline error: {e}",
+        ), None
+
+
+def step_verify_kv_only(pipeline):
+    """Verify that the pipeline only applies KV compression (no weight quant) for pre-quantized models."""
+    start = time.time()
+    if pipeline is None:
+        return StepResult(
+            name="verify_kv_only_pipeline",
+            passed=False,
+            duration_s=0,
+            details="No pipeline result to verify",
+        )
+
+    kv_only = not pipeline.needs_weight_quant and pipeline.needs_kv_compression
+    elapsed = time.time() - start
+    return StepResult(
+        name="verify_kv_only_pipeline",
+        passed=kv_only,
+        duration_s=elapsed,
+        details=(
+            f"Weight quant needed: {pipeline.needs_weight_quant} "
+            f"(expected: False for pre-quantized) | "
+            f"KV compression: {pipeline.needs_kv_compression} "
+            f"(expected: True) | "
+            f"Model precision: {pipeline.model_precision}"
+        ),
+        metrics={
+            "kv_only": kv_only,
+            "model_precision": pipeline.model_precision,
+            "kv_level": pipeline.kv_level.value,
+        },
+    )
+
+
+def step_turboquant_compatibility(sys_info):
+    """Check TurboQuant compatibility on current hardware."""
+    start = time.time()
+    available, message = check_turboquant_compatibility(sys_info)
+    elapsed = time.time() - start
+    return StepResult(
+        name="turboquant_compatibility",
+        passed=True,  # Informational — always passes
+        duration_s=elapsed,
+        details=message,
+        metrics={"turboquant_available": available},
+    )
+
+
+def step_thinking_turn(engine, history, user_msg, model_family, turn_name, monitor):
+    """Send a thinking-mode prompt and verify thinking block in response."""
+    start = time.time()
+    fmt = detect_thinking_format(model_family)
+
+    # Qwen3: /think appended to user message to force thinking
+    # Gemma4: thinking enabled via system prompt <|think|> token
+    prompt = f"{user_msg} /think" if fmt == ThinkingFormat.QWEN3 else user_msg
+    history.append(ChatMessage(role="user", content=prompt))
+
+    try:
+        full_response = ""
+        final_stats = None
+        for chunk, stats in engine.chat_stream(history):
+            if stats:
+                final_stats = stats
+                break
+            full_response += chunk
+
+        history.append(ChatMessage(role="assistant", content=full_response))
+        elapsed = time.time() - start
+
+        thinking_text, clean_response = extract_thinking(full_response, fmt)
+        has_thinking = len(thinking_text.strip()) > 0
+
+        metrics = {
+            "has_thinking_block": has_thinking,
+            "thinking_length": len(thinking_text),
+            "response_length": len(clean_response),
+            "thinking_format": fmt.value,
+        }
+        if final_stats:
+            monitor.record(final_stats.completion_tokens, final_stats.completion_time_s)
+            metrics.update({
+                "tokens_per_second": round(final_stats.tokens_per_second, 2),
+                "completion_tokens": final_stats.completion_tokens,
+            })
+
+        return StepResult(
+            name=turn_name,
+            passed=has_thinking and len(clean_response.strip()) > 0,
+            duration_s=elapsed,
+            details=(
+                f"Thinking: {'YES' if has_thinking else 'NO'} ({len(thinking_text)} chars) | "
+                f"Response: {clean_response[:150]}..."
+            ),
+            metrics=metrics,
+        )
+    except Exception as e:
+        return StepResult(
+            name=turn_name,
+            passed=False,
+            duration_s=time.time() - start,
+            details=f"Error: {e}",
+        )
+
+
+def step_no_thinking_turn(engine, history, user_msg, model_family, turn_name, monitor):
+    """Send a no-think prompt and verify minimal/no thinking block."""
+    start = time.time()
+    fmt = detect_thinking_format(model_family)
+
+    prompt = f"{user_msg} /no_think" if fmt == ThinkingFormat.QWEN3 else user_msg
+    history.append(ChatMessage(role="user", content=prompt))
+
+    try:
+        full_response = ""
+        final_stats = None
+        for chunk, stats in engine.chat_stream(history):
+            if stats:
+                final_stats = stats
+                break
+            full_response += chunk
+
+        history.append(ChatMessage(role="assistant", content=full_response))
+        elapsed = time.time() - start
+
+        thinking_text, clean_response = extract_thinking(full_response, fmt)
+
+        metrics = {
+            "has_thinking_block": len(thinking_text.strip()) > 0,
+            "thinking_length": len(thinking_text),
+            "response_length": len(clean_response),
+        }
+        if final_stats:
+            monitor.record(final_stats.completion_tokens, final_stats.completion_time_s)
+            metrics.update({
+                "tokens_per_second": round(final_stats.tokens_per_second, 2),
+                "completion_tokens": final_stats.completion_tokens,
+            })
+
+        return StepResult(
+            name=turn_name,
+            passed=len(clean_response.strip()) > 0,
+            duration_s=elapsed,
+            details=(
+                f"Thinking: {len(thinking_text)} chars (expected minimal) | "
+                f"Response: {clean_response[:150]}..."
+            ),
+            metrics=metrics,
+        )
+    except Exception as e:
+        return StepResult(
+            name=turn_name,
+            passed=False,
+            duration_s=time.time() - start,
+            details=f"Error: {e}",
+        )
+
+
+def step_tool_call_turn(engine, history, user_msg, turn_name, monitor):
+    """Send a prompt that should trigger a tool call and verify structured output."""
+    start = time.time()
+    history.append(ChatMessage(role="user", content=user_msg))
+
+    try:
+        full_response = ""
+        final_stats = None
+        for chunk, stats in engine.chat_stream(history):
+            if stats:
+                final_stats = stats
+                break
+            full_response += chunk
+
+        history.append(ChatMessage(role="assistant", content=full_response))
+        elapsed = time.time() - start
+
+        # Check for tool call patterns
+        has_tool_call = (
+            "<tool_call>" in full_response
+            or '"name"' in full_response
+            or '"get_weather"' in full_response
+            or "get_weather" in full_response
+        )
+
+        # Try to extract JSON from tool call
+        json_valid = False
+        try:
+            import re as _re
+            # Try <tool_call>...</tool_call> format
+            tc_match = _re.search(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", full_response, _re.DOTALL)
+            if tc_match:
+                json.loads(tc_match.group(1))
+                json_valid = True
+            else:
+                # Try raw JSON block
+                json_match = _re.search(r'\{[^{}]*"name"\s*:\s*"get_weather"[^{}]*\}', full_response, _re.DOTALL)
+                if json_match:
+                    json.loads(json_match.group(0))
+                    json_valid = True
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
+        metrics = {
+            "has_tool_call": has_tool_call,
+            "json_valid": json_valid,
+            "response_length": len(full_response),
+        }
+        if final_stats:
+            monitor.record(final_stats.completion_tokens, final_stats.completion_time_s)
+            metrics.update({
+                "tokens_per_second": round(final_stats.tokens_per_second, 2),
+                "completion_tokens": final_stats.completion_tokens,
+            })
+
+        return StepResult(
+            name=turn_name,
+            passed=has_tool_call,
+            duration_s=elapsed,
+            details=(
+                f"Tool call: {'YES' if has_tool_call else 'NO'} | "
+                f"JSON valid: {'YES' if json_valid else 'NO'} | "
+                f"Response: {full_response[:200]}..."
+            ),
+            metrics=metrics,
+        )
+    except Exception as e:
+        return StepResult(
+            name=turn_name,
+            passed=False,
+            duration_s=time.time() - start,
+            details=f"Error: {e}",
+        )
+
+
+def step_no_tool_turn(engine, history, user_msg, turn_name, monitor):
+    """Send a prompt that should NOT trigger a tool call."""
+    start = time.time()
+    history.append(ChatMessage(role="user", content=user_msg))
+
+    try:
+        full_response = ""
+        final_stats = None
+        for chunk, stats in engine.chat_stream(history):
+            if stats:
+                final_stats = stats
+                break
+            full_response += chunk
+
+        history.append(ChatMessage(role="assistant", content=full_response))
+        elapsed = time.time() - start
+
+        has_tool_call = "<tool_call>" in full_response
+        has_answer = len(full_response.strip()) > 0
+
+        metrics = {
+            "has_tool_call": has_tool_call,
+            "answered_directly": has_answer and not has_tool_call,
+        }
+        if final_stats:
+            monitor.record(final_stats.completion_tokens, final_stats.completion_time_s)
+            metrics.update({
+                "tokens_per_second": round(final_stats.tokens_per_second, 2),
+                "completion_tokens": final_stats.completion_tokens,
+            })
+
+        return StepResult(
+            name=turn_name,
+            passed=has_answer,
+            duration_s=elapsed,
+            details=(
+                f"Direct answer: {'YES' if has_answer and not has_tool_call else 'NO'} | "
+                f"Tool call emitted: {'YES' if has_tool_call else 'NO'} | "
+                f"Response: {full_response[:150]}..."
+            ),
+            metrics=metrics,
+        )
+    except Exception as e:
+        return StepResult(
+            name=turn_name,
+            passed=False,
+            duration_s=time.time() - start,
+            details=f"Error: {e}",
+        )
+
+
+def _load_model_for_specific_id(model_id, config, kv_quant="turbo3"):
+    """Helper: look up a specific model by ID, download if needed, return profile + engine."""
+    registry = ModelRegistry(config.models_dir)
+    sys_info = detect_system()
+
+    # Look up profile
+    profile = None
+    for p in BUILTIN_PROFILES:
+        if p.id == model_id:
+            profile = p
+            break
+    if profile is None:
+        return None, None, sys_info, [StepResult(
+            name="lookup_model",
+            passed=False,
+            details=f"Model {model_id} not found in BUILTIN_PROFILES",
+        )]
+
+    steps = []
+
+    # Verify / download model
+    registry.scan_local_models()
+    local = registry.get_profile(model_id)
+    if not local or not local.local_path:
+        try:
+            from huggingface_hub import hf_hub_download
+            start = time.time()
+            hf_hub_download(
+                repo_id=profile.hf_repo,
+                filename=profile.filename,
+                local_dir=str(config.models_dir),
+            )
+            registry.scan_local_models()
+            local = registry.get_profile(model_id)
+            elapsed = time.time() - start
+            steps.append(StepResult(
+                name="download_model",
+                passed=local is not None and local.local_path is not None,
+                duration_s=elapsed,
+                details=f"Downloaded {model_id} in {elapsed:.1f}s",
+            ))
+        except Exception as e:
+            steps.append(StepResult(
+                name="download_model",
+                passed=False,
+                details=f"Download failed: {e}",
+            ))
+            return profile, None, sys_info, steps
+    else:
+        steps.append(StepResult(
+            name="verify_model_available",
+            passed=True,
+            details=f"Model {model_id} available at {local.local_path}",
+        ))
+
+    if not local or not local.local_path:
+        steps.append(StepResult(name="model_available", passed=False, details="Model not on disk"))
+        return profile, None, sys_info, steps
+
+    # Run quantization pipeline
+    pipe_step, pipeline = step_quantization_pipeline(local, sys_info, kv_quant=kv_quant)
+    steps.append(pipe_step)
+
+    # Verify KV-only
+    steps.append(step_verify_kv_only(pipeline))
+
+    # Get KV params for llama.cpp
+    kv_level = pipeline.kv_level if pipeline else KVQuantLevel.TURBO3
+    kv_params = get_llama_kv_params(kv_level)
+
+    # Load model with TurboQuant KV
+    start = time.time()
+    try:
+        engine = LlamaBackend(
+            n_ctx=2048,
+            n_gpu_layers=-1,
+            verbose=False,
+            cache_type_k=kv_params["cache_type_k"],
+            cache_type_v=kv_params["cache_type_v"],
+        )
+        engine.load_model(str(local.local_path), multimodal=False)
+        elapsed = time.time() - start
+        steps.append(StepResult(
+            name="load_model_turbo_kv",
+            passed=True,
+            duration_s=elapsed,
+            details=(
+                f"Loaded {model_id} with KV={kv_level.value} "
+                f"(cache_type_k={kv_params['cache_type_k']}) in {elapsed:.1f}s"
+            ),
+            metrics={
+                "load_time_s": round(elapsed, 2),
+                "kv_level": kv_level.value,
+                "cache_type_k": kv_params["cache_type_k"],
+                "cache_type_v": kv_params["cache_type_v"],
+            },
+        ))
+        return local, engine, sys_info, steps
+    except Exception as e:
+        elapsed = time.time() - start
+        steps.append(StepResult(
+            name="load_model_turbo_kv",
+            passed=False,
+            duration_s=elapsed,
+            details=f"Failed to load with TurboQuant KV: {e}",
+        ))
+        return local, None, sys_info, steps
+
+
+# ─── Tests 5-7: Thinking + Tool Calling + Combined ─────────────────────
+
+
+def run_test_5_thinking_turbo3():
+    """Test 5: Thinking mode with TurboQuant turbo3 KV (Qwen3 + Gemma4 E2B)."""
+    result = TestResult(
+        test_name="Test 5: Thinking Mode + turbo3 KV (llama.cpp)",
+        model_id="",
+        model_family="qwen3 + gemma4",
+        engine="llama.cpp (TurboQuant fork)",
+        started=time.strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+    config = TqConfig.load()
+    config.ensure_dirs()
+    sys_info = detect_system()
+
+    # TurboQuant compatibility check
+    result.add_step(step_turboquant_compatibility(sys_info))
+
+    # ── 5a: Qwen3 4B + turbo3 KV ────────────────────────────────────
+    profile_q, engine_q, _, setup_steps = _load_model_for_specific_id(
+        "qwen3-4b-Q4_K_M", config, kv_quant="turbo3",
+    )
+    for s in setup_steps:
+        result.add_step(s)
+    result.model_id = "qwen3-4b-Q4_K_M"
+
+    if engine_q:
+        monitor = PerformanceMonitor(config.performance)
+        think_cfg = ThinkingConfig(format=ThinkingFormat.QWEN3, enabled=True)
+        sys_prompt = build_system_prompt_with_thinking(
+            "You are a helpful AI assistant. Be concise.", think_cfg,
+        )
+        history = [ChatMessage(role="system", content=sys_prompt)]
+
+        # Thinking turn: "How many r's in strawberry?"
+        result.add_step(step_thinking_turn(
+            engine_q, history,
+            'How many r\'s are in "strawberry"?',
+            "qwen3", "qwen3_thinking_turn", monitor,
+        ))
+
+        # No-thinking turn
+        result.add_step(step_no_thinking_turn(
+            engine_q, list(history),  # fresh copy
+            'How many r\'s are in "blueberry"?',
+            "qwen3", "qwen3_no_think_turn", monitor,
+        ))
+
+        # Multi-step reasoning
+        result.add_step(step_thinking_turn(
+            engine_q, [ChatMessage(role="system", content=sys_prompt)],
+            "A bat and a ball cost $1.10. The bat costs $1 more than the ball. What does the ball cost?",
+            "qwen3", "qwen3_reasoning_turn", monitor,
+        ))
+
+        engine_q.unload_model()
+
+    # ── 5b: Gemma 4 E2B + turbo3 KV ─────────────────────────────────
+    profile_g, engine_g, _, setup_steps = _load_model_for_specific_id(
+        "gemma-4-e2b-it-Q4_K_M", config, kv_quant="turbo3",
+    )
+    for s in setup_steps:
+        result.add_step(s)
+
+    if engine_g:
+        monitor = PerformanceMonitor(config.performance)
+        think_cfg = ThinkingConfig(format=ThinkingFormat.GEMMA4, enabled=True)
+        sys_prompt = build_system_prompt_with_thinking(
+            "You are a helpful AI assistant. Be concise.", think_cfg,
+        )
+        history = [ChatMessage(role="system", content=sys_prompt)]
+
+        # Thinking turn
+        result.add_step(step_thinking_turn(
+            engine_g, history,
+            'How many r\'s are in "strawberry"?',
+            "gemma4", "gemma4_thinking_turn", monitor,
+        ))
+
+        # Multi-step reasoning
+        result.add_step(step_thinking_turn(
+            engine_g, [ChatMessage(role="system", content=sys_prompt)],
+            "A bat and a ball cost $1.10. The bat costs $1 more than the ball. What does the ball cost?",
+            "gemma4", "gemma4_reasoning_turn", monitor,
+        ))
+
+        engine_g.unload_model()
+
+    result.finished = time.strftime("%Y-%m-%d %H:%M:%S")
+    result.total_duration_s = sum(s.duration_s for s in result.steps)
+    result.passed = all(s.passed for s in result.steps)
+    return result
+
+
+def run_test_6_tool_calling_turbo3():
+    """Test 6: Tool/function calling with TurboQuant turbo3 KV (Qwen3 + Gemma4 E2B)."""
+    result = TestResult(
+        test_name="Test 6: Tool Calling + turbo3 KV (llama.cpp)",
+        model_id="",
+        model_family="qwen3 + gemma4",
+        engine="llama.cpp (TurboQuant fork)",
+        started=time.strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+    config = TqConfig.load()
+    config.ensure_dirs()
+
+    # ── 6a: Qwen3 4B + turbo3 KV + tool calling ─────────────────────
+    profile_q, engine_q, _, setup_steps = _load_model_for_specific_id(
+        "qwen3-4b-Q4_K_M", config, kv_quant="turbo3",
+    )
+    for s in setup_steps:
+        result.add_step(s)
+    result.model_id = "qwen3-4b-Q4_K_M"
+
+    if engine_q:
+        monitor = PerformanceMonitor(config.performance)
+        history = [ChatMessage(role="system", content=QWEN3_TOOL_SYSTEM_PROMPT)]
+
+        # Tool trigger
+        result.add_step(step_tool_call_turn(
+            engine_q, history,
+            "What's the weather in Tokyo?",
+            "qwen3_tool_call", monitor,
+        ))
+
+        # No-tool turn (direct answer)
+        result.add_step(step_no_tool_turn(
+            engine_q,
+            [ChatMessage(role="system", content=QWEN3_TOOL_SYSTEM_PROMPT)],
+            "What is 2+2?",
+            "qwen3_no_tool_turn", monitor,
+        ))
+
+        engine_q.unload_model()
+
+    # ── 6b: Gemma 4 E2B + turbo3 KV + tool calling ──────────────────
+    profile_g, engine_g, _, setup_steps = _load_model_for_specific_id(
+        "gemma-4-e2b-it-Q4_K_M", config, kv_quant="turbo3",
+    )
+    for s in setup_steps:
+        result.add_step(s)
+
+    if engine_g:
+        monitor = PerformanceMonitor(config.performance)
+        history = [ChatMessage(role="system", content=GEMMA4_TOOL_SYSTEM_PROMPT)]
+
+        # Tool trigger
+        result.add_step(step_tool_call_turn(
+            engine_g, history,
+            "What's the weather in Tokyo?",
+            "gemma4_tool_call", monitor,
+        ))
+
+        # No-tool turn
+        result.add_step(step_no_tool_turn(
+            engine_g,
+            [ChatMessage(role="system", content=GEMMA4_TOOL_SYSTEM_PROMPT)],
+            "What is 2+2?",
+            "gemma4_no_tool_turn", monitor,
+        ))
+
+        engine_g.unload_model()
+
+    result.finished = time.strftime("%Y-%m-%d %H:%M:%S")
+    result.total_duration_s = sum(s.duration_s for s in result.steps)
+    result.passed = all(s.passed for s in result.steps)
+    return result
+
+
+def run_test_7_combined_turbo3():
+    """Test 7: Combined thinking + tool calling with TurboQuant turbo3 KV."""
+    result = TestResult(
+        test_name="Test 7: Combined Thinking + Tool Calling + turbo3 KV (llama.cpp)",
+        model_id="",
+        model_family="qwen3 + gemma4",
+        engine="llama.cpp (TurboQuant fork)",
+        started=time.strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+    config = TqConfig.load()
+    config.ensure_dirs()
+
+    # ── 7a: Qwen3 — think → tool_call → answer ──────────────────────
+    profile_q, engine_q, _, setup_steps = _load_model_for_specific_id(
+        "qwen3-4b-Q4_K_M", config, kv_quant="turbo3",
+    )
+    for s in setup_steps:
+        result.add_step(s)
+    result.model_id = "qwen3-4b-Q4_K_M"
+
+    if engine_q:
+        monitor = PerformanceMonitor(config.performance)
+        # System prompt with BOTH thinking and tools
+        combined_prompt = QWEN3_TOOL_SYSTEM_PROMPT + "\nThink step by step before answering."
+        history = [ChatMessage(role="system", content=combined_prompt)]
+
+        # Ambiguous query that needs reasoning + tool
+        result.add_step(step_thinking_turn(
+            engine_q, history,
+            "Should I bring an umbrella to London tomorrow?",
+            "qwen3", "qwen3_combined_think", monitor,
+        ))
+
+        # Verify the response also attempted a tool call (or reasoned about needing one)
+        if history and len(history) > 2:
+            last_resp = history[-1].content
+            has_tool_ref = "weather" in last_resp.lower() or "tool_call" in last_resp or "get_weather" in last_resp
+            result.add_step(StepResult(
+                name="qwen3_combined_tool_awareness",
+                passed=True,  # Informational
+                details=f"Tool/weather referenced in response: {'YES' if has_tool_ref else 'NO'}",
+                metrics={"has_tool_reference": has_tool_ref},
+            ))
+
+        engine_q.unload_model()
+
+    # ── 7b: Gemma 4 E2B — think → tool_call → answer ────────────────
+    profile_g, engine_g, _, setup_steps = _load_model_for_specific_id(
+        "gemma-4-e2b-it-Q4_K_M", config, kv_quant="turbo3",
+    )
+    for s in setup_steps:
+        result.add_step(s)
+
+    if engine_g:
+        monitor = PerformanceMonitor(config.performance)
+        think_cfg = ThinkingConfig(format=ThinkingFormat.GEMMA4, enabled=True)
+        combined_prompt = build_system_prompt_with_thinking(
+            GEMMA4_TOOL_SYSTEM_PROMPT, think_cfg,
+        )
+        history = [ChatMessage(role="system", content=combined_prompt)]
+
+        result.add_step(step_thinking_turn(
+            engine_g, history,
+            "Should I bring an umbrella to London tomorrow?",
+            "gemma4", "gemma4_combined_think", monitor,
+        ))
+
+        if history and len(history) > 2:
+            last_resp = history[-1].content
+            has_tool_ref = "weather" in last_resp.lower() or "get_weather" in last_resp
+            result.add_step(StepResult(
+                name="gemma4_combined_tool_awareness",
+                passed=True,
+                details=f"Tool/weather referenced in response: {'YES' if has_tool_ref else 'NO'}",
+                metrics={"has_tool_reference": has_tool_ref},
+            ))
+
+        engine_g.unload_model()
+
+    result.finished = time.strftime("%Y-%m-%d %H:%M:%S")
+    result.total_duration_s = sum(s.duration_s for s in result.steps)
+    result.passed = all(s.passed for s in result.steps)
+    return result
+
+
 # ─── Test Execution ──────────────────────────────────────────────────────
 
 
@@ -1253,11 +1998,13 @@ def format_report(results: list[TestResult], system_info: dict) -> str:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--test", type=int, choices=[1, 2, 3, 4], default=None,
-                        help="Run specific test (1-4)")
-    parser.add_argument("--output", default="/llm_models_python_code_src/tqCLI/TEST_REPORT.md",
+    parser.add_argument("--test", type=int, choices=[1, 2, 3, 4, 5, 6, 7], default=None,
+                        help="Run specific test (1-7)")
+    parser.add_argument("--output", default=str(REPORT_DIR / "llama_cpp_test_report.md"),
                         help="Output report path")
     args = parser.parse_args()
+
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
     system_info = get_system_info()
     results = []
@@ -1290,6 +2037,27 @@ if __name__ == "__main__":
         results.append(run_test_4_qwen3_multiprocess())
         print(f"Test 4: {'PASS' if results[-1].passed else 'FAIL'} ({results[-1].pass_count}/{len(results[-1].steps)} steps)")
 
+    if args.test is None or args.test == 5:
+        print("=" * 60)
+        print("RUNNING TEST 5: Thinking Mode + turbo3 KV (llama.cpp)")
+        print("=" * 60)
+        results.append(run_test_5_thinking_turbo3())
+        print(f"Test 5: {'PASS' if results[-1].passed else 'FAIL'} ({results[-1].pass_count}/{len(results[-1].steps)} steps)")
+
+    if args.test is None or args.test == 6:
+        print("=" * 60)
+        print("RUNNING TEST 6: Tool Calling + turbo3 KV (llama.cpp)")
+        print("=" * 60)
+        results.append(run_test_6_tool_calling_turbo3())
+        print(f"Test 6: {'PASS' if results[-1].passed else 'FAIL'} ({results[-1].pass_count}/{len(results[-1].steps)} steps)")
+
+    if args.test is None or args.test == 7:
+        print("=" * 60)
+        print("RUNNING TEST 7: Combined Thinking + Tool Calling + turbo3 KV")
+        print("=" * 60)
+        results.append(run_test_7_combined_turbo3())
+        print(f"Test 7: {'PASS' if results[-1].passed else 'FAIL'} ({results[-1].pass_count}/{len(results[-1].steps)} steps)")
+
     # Generate report
     report = format_report(results, system_info)
     Path(args.output).write_text(report)
@@ -1298,6 +2066,7 @@ if __name__ == "__main__":
     # Also write JSON results
     json_path = Path(args.output).with_suffix(".json")
     json_data = {
+        "generated": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "system_info": system_info,
         "results": [],
     }

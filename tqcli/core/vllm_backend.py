@@ -23,6 +23,7 @@ class VllmBackend(InferenceEngine):
         tensor_parallel_size: int = 1,
         kv_cache_dtype: str = "auto",
         enforce_eager: bool = False,
+        cpu_offload_gb: float = 0,
     ):
         self._max_model_len = max_model_len
         self._gpu_memory_utilization = gpu_memory_utilization
@@ -31,6 +32,7 @@ class VllmBackend(InferenceEngine):
         self._tensor_parallel_size = tensor_parallel_size
         self._kv_cache_dtype = kv_cache_dtype
         self._enforce_eager = enforce_eager
+        self._cpu_offload_gb = cpu_offload_gb
         self._llm = None
         self._model_name: str = ""
         self._tokenizer = None
@@ -46,6 +48,7 @@ class VllmBackend(InferenceEngine):
             tensor_parallel_size=profile.tensor_parallel_size,
             kv_cache_dtype=profile.kv_cache_dtype,
             enforce_eager=profile.enforce_eager,
+            cpu_offload_gb=getattr(profile, "cpu_offload_gb", 0),
         )
 
     @property
@@ -96,6 +99,11 @@ class VllmBackend(InferenceEngine):
 
         if kwargs.get("kv_cache_memory_bytes"):
             params["kv_cache_memory_bytes"] = kwargs["kv_cache_memory_bytes"]
+
+        # CPU offloading: spill model weights that exceed VRAM into system RAM
+        offload = kwargs.get("cpu_offload_gb", self._cpu_offload_gb)
+        if offload and offload > 0:
+            params["cpu_offload_gb"] = offload
 
         self._llm = LLM(**params)
         self._model_name = model_path

@@ -1,0 +1,196 @@
+{
+  "generated": "2026-04-15T14:06:25",
+  "report_type": "gemma4_vllm_pipeline_diagnostic",
+  "purpose": "Traces every stage of the unified quantization pipeline for Gemma 4 E2B BF16 on vLLM to document exactly what happens and why it is infeasible on 4 GB VRAM.",
+  "system": {
+    "os": "Linux (Ubuntu 22.04.4 LTS) (WSL2)",
+    "gpu": "NVIDIA RTX A2000 Laptop GPU",
+    "vram_mb": 4096,
+    "cuda_version": "13.0",
+    "cuda_toolkit": "12.8",
+    "compute_capability": "8.6",
+    "is_wsl": true
+  },
+  "model_profile": {
+    "id": "gemma-4-e2b-it-vllm",
+    "display_name": "Gemma 4 E2B Edge Instruct (vLLM BF16)",
+    "family": "gemma4",
+    "parameter_count": "2.3B",
+    "quantization": "BF16",
+    "format": "safetensors",
+    "engine": "vllm",
+    "multimodal": true,
+    "supports_thinking": true,
+    "hf_repo": "google/gemma-4-e2b-it",
+    "min_vram_mb": 3500
+  },
+  "stage_1_detect_precision": {
+    "description": "Detect whether model is full-precision or already weight-quantized",
+    "input": {
+      "quantization_field": "BF16",
+      "format_field": "safetensors"
+    },
+    "output": "full_precision",
+    "explanation": "Model quantization='BF16', format='safetensors' \u2192 detected as 'full_precision'. BF16 safetensors are full-precision, meaning weight quantization (Stage 2) WILL be attempted."
+  },
+  "stage_2_size_estimates": {
+    "description": "Estimate VRAM footprint at each quantization level",
+    "parameter_count_billions": 2.3,
+    "multimodal": true,
+    "breakdown": {
+      "bf16": {
+        "text_weights_mb": 4710,
+        "multimodal_overhead_mb": 7000,
+        "total_mb": 11710,
+        "note": "2.3B params \u00d7 2.0 bytes/param \u00d7 1024 = 4710 MB text + 7000 MB multimodal"
+      },
+      "bnb_int4": {
+        "text_weights_mb": 1695,
+        "multimodal_overhead_mb": 2450,
+        "total_mb": 4145,
+        "note": "2.3B params \u00d7 0.72 bytes/param \u00d7 1024 = 1695 MB text + 2450 MB multimodal (35% of BF16)"
+      },
+      "bnb_int8": {
+        "text_weights_mb": 2590,
+        "multimodal_overhead_mb": 7000,
+        "total_mb": 9590,
+        "note": "INT8 does not reduce multimodal overhead"
+      }
+    },
+    "key_insight": "The multimodal encoders (SigLIP vision + audio + VQ-VAE) add 7000 MB in BF16, reduced to 2450 MB with INT4. Text-only INT4 would be just 1695 MB \u2014 small enough for 4 GB VRAM. The multimodal overhead is what makes it infeasible."
+  },
+  "stage_3_select_quantization": {
+    "description": "Select best weight quantization method for available VRAM",
+    "vram_budget": {
+      "total_vram_mb": 4096,
+      "cuda_overhead_mb": 810,
+      "vllm_runtime_mb": 700,
+      "min_kv_cache_mb": 50,
+      "available_for_model_mb": 2536
+    },
+    "checks": [
+      {
+        "method": "BF16 (no quantization)",
+        "size_mb": 11710,
+        "fits": false,
+        "verdict": "11710 MB > 2536 MB \u2192 DOES NOT FIT"
+      },
+      {
+        "method": "BNB_INT4",
+        "size_mb": 4145,
+        "fits": false,
+        "verdict": "4145 MB > 2536 MB \u2192 DOES NOT FIT"
+      },
+      {
+        "method": "BNB_INT8",
+        "size_mb": 9590,
+        "fits": false,
+        "verdict": "9590 MB > 2536 MB \u2192 DOES NOT FIT"
+      }
+    ],
+    "selected_method": "None (model too large)",
+    "explanation": "Even with INT4 quantization (4145 MB), the model exceeds the 2536 MB budget. The 2450 MB multimodal encoder overhead (35% of 7000 MB BF16) is the primary blocker."
+  },
+  "stage_4_pipeline_decision": {
+    "description": "Unified quantization pipeline decision (weight quant + KV compression)",
+    "model_precision": "full_precision",
+    "needs_weight_quant": false,
+    "weight_quant_method": "",
+    "weight_quant_reason": "Model is BF16 \u2014 too large for 4096 MB VRAM even with INT4 quantization (may need smaller model or more VRAM)",
+    "needs_kv_compression": true,
+    "kv_level": "turbo3",
+    "kv_reason": "Applying turbo3 KV compression (4.6x, Minimal loss (+1.06% PPL))",
+    "stages_applied": [
+      "kv:turbo3"
+    ],
+    "summary": "kv:turbo3",
+    "explanation": "Pipeline detected 'full_precision' \u2192 attempted weight quantization but no method fits (Model is BF16 \u2014 too large for 4096 MB VRAM even with INT4 quantization (may need smaller model or more VRAM)). KV compression was still planned (Applying turbo3 KV compression (4.6x, Minimal loss (+1.06% PPL))) but cannot be applied if the model can't load."
+  },
+  "stage_5_vllm_config": {
+    "description": "Hardware-aware vLLM configuration builder result",
+    "feasible": false,
+    "reason": "Model too large even after INT4 quantization: BF16=11710 MB, VRAM=4096 MB",
+    "gpu_memory_utilization": 0.85,
+    "max_model_len": 4096,
+    "quantization": null,
+    "kv_cache_dtype": "auto",
+    "enforce_eager": false,
+    "estimated_model_size_mb": 0,
+    "warnings": [],
+    "explanation": "build_vllm_config() returned feasible=False. Reason: Model too large even after INT4 quantization: BF16=11710 MB, VRAM=4096 MB"
+  },
+  "turboquant_kv_status": {
+    "available": true,
+    "message": "TurboQuant KV cache available (llama.cpp, vLLM)",
+    "note": "TurboQuant KV compression IS available on this system, but cannot be used because the model weights themselves don't fit in VRAM. KV compression only reduces the KV cache memory, not model weight memory."
+  },
+  "minimum_hardware_analysis": {
+    "description": "Minimum VRAM required for Gemma 4 E2B on vLLM",
+    "scenarios": [
+      {
+        "scenario": "INT4 text-only (no multimodal encoders)",
+        "model_size_mb": 1695,
+        "min_vram_mb_wsl": 3255,
+        "min_vram_mb_linux": 2845,
+        "fits_4gb": true,
+        "min_gpu": "RTX 3050 4GB (Linux, not WSL2)"
+      },
+      {
+        "scenario": "INT4 with multimodal (current estimate)",
+        "model_size_mb": 4145,
+        "min_vram_mb_wsl": 5705,
+        "min_vram_mb_linux": 5295,
+        "fits_4gb": false,
+        "min_gpu": "RTX 3060 6GB or RTX 4060 8GB"
+      },
+      {
+        "scenario": "BF16 full precision with multimodal",
+        "model_size_mb": 11710,
+        "min_vram_mb_wsl": 13270,
+        "min_vram_mb_linux": 12860,
+        "fits_4gb": false,
+        "min_gpu": "RTX 4090 24GB or A100 40GB"
+      }
+    ],
+    "your_system": {
+      "gpu": "NVIDIA RTX A2000 Laptop GPU",
+      "vram_mb": 4096,
+      "verdict": "RTX A2000 (4 GB) cannot run Gemma 4 E2B on vLLM because even with INT4 quantization, the multimodal encoders push the total to 4145 MB, exceeding the 2536 MB budget. Text-only INT4 (1695 MB) would fit on native Linux (2845 MB needed) but not WSL2 (3255 MB needed > 4096 MB)."
+    },
+    "recommendation": "For Gemma 4 E2B on your hardware, use llama.cpp with the GGUF Q4_K_M model (2,890 MB on disk, loads with ~2.8 GB VRAM + turbo3 KV). For vLLM Gemma 4 E2B, minimum 6 GB VRAM (RTX 3060) is required."
+  },
+  "what_works_on_4gb": {
+    "llama_cpp": {
+      "gemma_4_e2b_Q4_K_M": {
+        "status": "WORKS",
+        "size_mb": 2890,
+        "kv_compression": "turbo3 (4.6x)",
+        "tested": true,
+        "tok_s": "2-4"
+      },
+      "qwen3_4b_Q4_K_M": {
+        "status": "WORKS",
+        "size_mb": 2382,
+        "kv_compression": "turbo3 (4.6x)",
+        "tested": true,
+        "tok_s": "6-9"
+      }
+    },
+    "vllm": {
+      "qwen3_4b_AWQ": {
+        "status": "WORKS",
+        "size_mb": 2558,
+        "kv_compression": "turboquant35",
+        "tested": true,
+        "tok_s": "0.5-1.0"
+      },
+      "gemma_4_e2b_BF16_INT4": {
+        "status": "DOES NOT FIT",
+        "estimated_int4_mb": 4145,
+        "available_mb": 2536,
+        "blocker": "Multimodal encoders add 2450 MB even with INT4",
+        "min_vram_needed": "5705 MB (WSL2)"
+      }
+    }
+  }
+}
