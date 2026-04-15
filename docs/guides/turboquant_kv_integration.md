@@ -94,12 +94,29 @@ CUDA_HOME=/usr/local/cuda-12.8 VLLM_TARGET_DEVICE=cuda pip install -e .
 
 ## Performance Results (RTX A2000, 4 GB VRAM)
 
-**Model:** Qwen3-4B Q4_K_M, 37/37 GPU layers
+### llama.cpp (turbo3 KV)
 
-| KV Type | tok/s | KV Memory | Est. Context |
-|---------|-------|-----------|-------------|
-| f16 (baseline) | 6.41 | ~515 MB | ~368 tokens |
-| turbo3 | 7.33 (+14%) | 112 MB | ~1700 tokens |
+| Model | KV Type | tok/s | Est. Context |
+|-------|---------|-------|-------------|
+| Qwen3-4B Q4_K_M | f16 (baseline) | 6.41 | ~368 tokens |
+| Qwen3-4B Q4_K_M | turbo3 | 7.33 (+14%) | ~1700 tokens |
+| Gemma 4 E2B Q4_K_M | turbo3 | 6.52-7.27 | tested with thinking + tool calling |
+
+### vLLM (turboquant35 KV)
+
+| Model | KV Type | tok/s | KV Tokens (50 MB) |
+|-------|---------|-------|--------------------|
+| Qwen3-4B AWQ | auto (baseline) | 5.72 | 336 |
+| Qwen3-4B AWQ | turboquant35 | 2.04 | 1,344 (4.0x more) |
+
+### Verified Capabilities with TurboQuant KV
+
+| Capability | Qwen3 (llama.cpp) | Qwen3 (vLLM) | Gemma 4 (llama.cpp) |
+|------------|-------------------|---------------|---------------------|
+| Basic inference | PASS | PASS | PASS |
+| Thinking mode | PASS | PASS | PASS |
+| Tool calling (JSON) | PASS | PASS | PASS |
+| Combined think+tool | PASS | SKIP (ctx limit) | PASS |
 
 ## Architecture
 
