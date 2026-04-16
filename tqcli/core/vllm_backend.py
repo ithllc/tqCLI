@@ -24,6 +24,8 @@ class VllmBackend(InferenceEngine):
         kv_cache_dtype: str = "auto",
         enforce_eager: bool = False,
         cpu_offload_gb: float = 0,
+        kv_cache_memory_bytes: int | None = None,
+        max_num_batched_tokens: int | None = None,
     ):
         self._max_model_len = max_model_len
         self._gpu_memory_utilization = gpu_memory_utilization
@@ -33,6 +35,8 @@ class VllmBackend(InferenceEngine):
         self._kv_cache_dtype = kv_cache_dtype
         self._enforce_eager = enforce_eager
         self._cpu_offload_gb = cpu_offload_gb
+        self._kv_cache_memory_bytes = kv_cache_memory_bytes
+        self._max_num_batched_tokens = max_num_batched_tokens
         self._llm = None
         self._model_name: str = ""
         self._tokenizer = None
@@ -49,6 +53,8 @@ class VllmBackend(InferenceEngine):
             kv_cache_dtype=profile.kv_cache_dtype,
             enforce_eager=profile.enforce_eager,
             cpu_offload_gb=getattr(profile, "cpu_offload_gb", 0),
+            kv_cache_memory_bytes=getattr(profile, "kv_cache_memory_bytes", None),
+            max_num_batched_tokens=getattr(profile, "max_num_batched_tokens", None),
         )
 
     @property
@@ -97,8 +103,12 @@ class VllmBackend(InferenceEngine):
             except ImportError:
                 pass
 
-        if kwargs.get("kv_cache_memory_bytes"):
-            params["kv_cache_memory_bytes"] = kwargs["kv_cache_memory_bytes"]
+        kv_mem = kwargs.get("kv_cache_memory_bytes", self._kv_cache_memory_bytes)
+        if kv_mem:
+            params["kv_cache_memory_bytes"] = kv_mem
+        batched_tokens = kwargs.get("max_num_batched_tokens", self._max_num_batched_tokens)
+        if batched_tokens:
+            params["max_num_batched_tokens"] = batched_tokens
 
         # CPU offloading: spill model weights that exceed VRAM into system RAM
         offload = kwargs.get("cpu_offload_gb", self._cpu_offload_gb)

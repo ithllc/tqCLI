@@ -45,6 +45,10 @@ class VllmTuningProfile:
     reasoning_parser: str = ""
     # CPU offloading: spill excess model weight into system RAM
     cpu_offload_gb: float = 0
+    # Manual KV cache memory (bypasses vLLM profiler, needed for BNB+offload)
+    kv_cache_memory_bytes: int | None = None
+    # Max tokens in a single batch (limits profiling memory)
+    max_num_batched_tokens: int | None = None
     warnings: list[str] = field(default_factory=list)
     feasible: bool = True
     reason: str = ""
@@ -93,11 +97,22 @@ def build_vllm_config(
         excess_mb = int4_size - available_for_model
 
         if excess_mb > 0 and available_ram_mb > excess_mb + 2000:
-            # We have enough system RAM to offload the excess
+            # We have enough system RAM to offload the excess.
+            # The offloader measures bf16 param sizes at init time (before
+            # BNB quantization), so we need to compute the offload budget
+            # in bf16 terms. Offload aggressively: leave only ~1.5 GiB
+            # worth of bf16 params on GPU (which becomes ~0.5 GiB INT4).
             quant_method = QuantizationMethod.BNB_INT4
-            offload_gb = round((excess_mb / 1024) + 0.5, 1)  # round up with margin
-            profile.cpu_offload_gb = offload_gb
             bf16_size = estimate_bf16_model_size(model)
+            bf16_to_keep_gb = min(1.5, bf16_size / 1024)
+            offload_gb = round(max((bf16_size / 1024) - bf16_to_keep_gb, 1.0), 1)
+            profile.cpu_offload_gb = offload_gb
+            # vLLM's memory profiler overestimates peak usage with BNB +
+            # CPU offload (non-UVA path). Bypass with manual KV cache size.
+            kv_cache_mb = min(max(available_for_model // 4, 32), 128)
+            profile.kv_cache_memory_bytes = kv_cache_mb * 1024 * 1024
+            # Limit profiling batch size to reduce peak activation memory
+            profile.max_num_batched_tokens = 256
             warnings.append(
                 f"Model exceeds VRAM (INT4={int4_size} MB > {available_for_model} MB available). "
                 f"CPU offloading {offload_gb} GB to system RAM ({available_ram_mb} MB available)."
