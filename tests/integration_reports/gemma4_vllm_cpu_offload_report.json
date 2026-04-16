@@ -1,12 +1,12 @@
 {
-  "generated": "2026-04-15T14:17:33",
+  "generated": "2026-04-15T21:14:01",
   "test_name": "Gemma 4 E2B vLLM + CPU Offloading + BNB_INT4 + TurboQuant KV",
   "system": {
     "os": "Linux (Ubuntu 22.04.4 LTS) (WSL2)",
     "gpu": "NVIDIA RTX A2000 Laptop GPU",
     "vram_mb": 4096,
     "ram_total_mb": 31956,
-    "ram_available_mb": 24389,
+    "ram_available_mb": 15884,
     "cuda_toolkit": "12.8",
     "compute_capability": "8.6",
     "is_wsl": true
@@ -45,12 +45,12 @@
       "name": "size_estimates",
       "passed": true,
       "duration_s": 0.0,
-      "details": "BF16=11710 MB, INT4=4145 MB, VRAM=4096 MB, RAM=24079 MB",
+      "details": "BF16=11710 MB, INT4=4145 MB, VRAM=4096 MB, RAM=15550 MB",
       "metrics": {
         "bf16_mb": 11710,
         "int4_mb": 4145,
         "vram_mb": 4096,
-        "ram_available_mb": 24079
+        "ram_available_mb": 15550
       }
     },
     {
@@ -66,7 +66,7 @@
     {
       "name": "build_vllm_config_with_offload",
       "passed": true,
-      "duration_s": 0.00011515617370605469,
+      "duration_s": 0.0011265277862548828,
       "details": "feasible=True | cpu_offload_gb=2.1 | quantization=bitsandbytes | kv_cache_dtype=turboquant35 | max_model_len=2048",
       "metrics": {
         "feasible": true,
@@ -79,7 +79,7 @@
         "enforce_eager": true,
         "estimated_model_size_mb": 4145,
         "warnings": [
-          "Model exceeds VRAM (INT4=4145 MB > 2536 MB available). CPU offloading 2.1 GB to system RAM (24079 MB available).",
+          "Model exceeds VRAM (INT4=4145 MB > 2536 MB available). CPU offloading 2.1 GB to system RAM (15550 MB available).",
           "BF16 model (11710 MB) will be quantized to bnb_int4 (~4145 MB) via bitsandbytes",
           "enforce_eager=True (saves ~1 GB VRAM on small GPUs)",
           "kv_cache_dtype=turboquant35 (TurboQuant turbo3: 4.6x KV compression)",
@@ -98,10 +98,10 @@
     {
       "name": "load_model_with_cpu_offload",
       "passed": false,
-      "duration_s": 8.100524425506592,
-      "details": "Load failed: 1 validation error for ModelConfig\n  Value error, The checkpoint you are trying to load has model type `gemma4` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade transformers`. If this does not work, and the checkpoint is very new, then there may not be a release version that supports this model yet. In this case, you can get the most up-to-date code by installing Transformers from source with the command `pip install git+https://github.com/huggingface/transformers.git` [type=value_error, input_value=ArgsKwargs((), {'model': ...rocessor_plugin': None}), input_type=ArgsKwargs]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error",
+      "duration_s": 480.17928433418274,
+      "details": "Load failed: Engine core initialization failed. See root cause above. Failed core proc(s): {}",
       "metrics": {
-        "error": "1 validation error for ModelConfig\n  Value error, The checkpoint you are trying to load has model type `gemma4` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade transformers`. If this does not work, and the checkpoint is very new, then there may not be a release version that supports this model yet. In this case, you can get the most up-to-date code by installing Transformers from source with the command `pip install git+https://github.com/huggingface/transformers.git` [type=value_error, input_value=ArgsKwargs((), {'model': ...rocessor_plugin': None}), input_type=ArgsKwargs]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+        "error": "Engine core initialization failed. See root cause above. Failed core proc(s): {}"
       }
     }
   ],

@@ -1,5 +1,5 @@
 {
-  "generated": "2026-04-15T12:12:30",
+  "generated": "2026-04-15T20:12:18",
   "report_type": "turboquant_kv_unified_integration",
   "tqcli_version": "0.5.0",
   "system": {
@@ -8,7 +8,7 @@
     "cpu_cores": 16,
     "cpu_physical": 8,
     "ram_total_mb": 31956,
-    "ram_available_mb": 24767,
+    "ram_available_mb": 12147,
     "gpu": "NVIDIA RTX A2000 Laptop GPU",
     "vram_mb": 4096,
     "recommended_engine": "llama.cpp",
@@ -31,7 +31,7 @@
   },
   "vllm": {
     "engine": "vLLM (TurboQuant fork)",
-    "duration_s": 551.73,
+    "duration_s": 372.18,
     "errors": [],
     "tests": [
       {
@@ -39,17 +39,17 @@
         "model_id": "qwen3-4b-AWQ",
         "model_family": "qwen3 + gemma4",
         "engine": "vLLM (TurboQuant fork)",
-        "started": "2026-04-15 12:03:19",
-        "finished": "2026-04-15 12:12:30",
-        "total_duration_s": 546.0841891765594,
-        "passed": true,
+        "started": "2026-04-15 20:06:05",
+        "finished": "2026-04-15 20:12:18",
+        "total_duration_s": 370.0947997570038,
+        "passed": false,
         "pass_count": 12,
-        "fail_count": 0,
+        "fail_count": 1,
         "steps": [
           {
             "name": "turboquant_compatibility",
             "passed": true,
-            "duration_s": 9.250640869140625e-05,
+            "duration_s": 2.3603439331054688e-05,
             "details": "TurboQuant KV cache available (llama.cpp, vLLM)",
             "metrics": {
               "turboquant_available": true
@@ -58,7 +58,7 @@
           {
             "name": "download_model",
             "passed": true,
-            "duration_s": 0.007353067398071289,
+            "duration_s": 6.246566772460938e-05,
             "details": "Already downloaded at /root/.tqcli/models/qwen3-4b-AWQ (2558 MB)",
             "metrics": {
               "size_mb": 2558.2,
@@ -69,7 +69,7 @@
           {
             "name": "quantization_pipeline",
             "passed": true,
-            "duration_s": 0.003425121307373047,
+            "duration_s": 0.0005927085876464844,
             "details": "Pipeline: kv:turbo3 | Precision: weight_quantized | Weight quant needed: False | KV compression: turbo3",
             "metrics": {
               "model_precision": "weight_quantized",
@@ -87,7 +87,7 @@
           {
             "name": "verify_kv_only_pipeline",
             "passed": true,
-            "duration_s": 1.9073486328125e-06,
+            "duration_s": 2.384185791015625e-07,
             "details": "Weight quant needed: False (expected: False for pre-quantized) | KV compression: True (expected: True) | Model precision: weight_quantized",
             "metrics": {
               "kv_only": true,
@@ -98,10 +98,10 @@
           {
             "name": "load_model_turbo_kv",
             "passed": true,
-            "duration_s": 167.9223108291626,
-            "details": "Loaded Qwen3 4B (AWQ INT4, vLLM) via vLLM with kv_cache_dtype=turboquant35 in 167.9s",
+            "duration_s": 70.35994362831116,
+            "details": "Loaded Qwen3 4B (AWQ INT4, vLLM) via vLLM with kv_cache_dtype=turboquant35 in 70.4s",
             "metrics": {
-              "load_time_s": 167.92,
+              "load_time_s": 70.36,
               "max_model_len": 984,
               "gpu_memory_utilization": 0.8,
               "kv_cache_dtype": "turboquant35",
@@ -116,48 +116,48 @@
           {
             "name": "qwen3_thinking_turn",
             "passed": true,
-            "duration_s": 152.04061102867126,
+            "duration_s": 61.05072832107544,
             "details": "Thinking: NO (0 chars) | Response: To calculate 15% of 240, I can follow the:\n\n15. First, convert the percentage to a decimal by dividing by 100: 15.5/100 = 0.15.\n2. Then, multiply the ...",
             "metrics": {
               "has_thinking_block": false,
               "thinking_length": 0,
               "response_length": 233,
               "thinking_format": "qwen3",
-              "tokens_per_second": 0.74,
+              "tokens_per_second": 1.84,
               "completion_tokens": 112
             }
           },
           {
             "name": "qwen3_no_think_turn",
             "passed": true,
-            "duration_s": 71.21535968780518,
+            "duration_s": 34.80297923088074,
             "details": "Thinking: 0 chars (expected minimal) | Response: </think>\n\n</think>\n\nTo find 10% of 5 5 500, I can multiply 500 by 0.1. \n\n10% of 500 is 50....",
             "metrics": {
               "has_thinking_block": false,
               "thinking_length": 0,
               "response_length": 90,
-              "tokens_per_second": 0.74,
+              "tokens_per_second": 1.52,
               "completion_tokens": 53
             }
           },
           {
             "name": "qwen3_reasoning_turn",
             "passed": true,
-            "duration_s": 152.38254594802856,
+            "duration_s": 67.56940293312073,
             "details": "Thinking: NO (0 chars) | Response: The ball costs 5 cents. \n\n**Explanation\n\nThe problem is a classic riddle. Here's the math:\n\nLet the ball cost **x**.  \nThe bat costs **x + 1**.  \n\nTot...",
             "metrics": {
               "has_thinking_block": false,
               "thinking_length": 0,
               "response_length": 251,
               "thinking_format": "qwen3",
-              "tokens_per_second": 0.73,
+              "tokens_per_second": 1.64,
               "completion_tokens": 111
             }
           },
           {
             "name": "download_model",
             "passed": true,
-            "duration_s": 0.0005936622619628906,
+            "duration_s": 0.0002071857452392578,
             "details": "Already downloaded at /root/.tqcli/models/gemma-4-e2b-it-vllm (9803 MB)",
             "metrics": {
               "size_mb": 9802.7,
@@ -168,7 +168,7 @@
           {
             "name": "quantization_pipeline",
             "passed": true,
-            "duration_s": 0.0004940032958984375,
+            "duration_s": 0.00020933151245117188,
             "details": "Pipeline: kv:turbo3 | Precision: full_precision | Weight quant needed: False | KV compression: turbo3",
             "metrics": {
               "model_precision": "full_precision",
@@ -186,7 +186,7 @@
           {
             "name": "verify_full_pipeline",
             "passed": true,
-            "duration_s": 9.5367431640625e-07,
+            "duration_s": 4.76837158203125e-07,
             "details": "Weight quant needed: False | Weight method:  | KV compression: True | KV level: turbo3 | Precision: full_precision",
             "metrics": {
               "both_stages": false,
@@ -197,14 +197,17 @@
           },
           {
             "name": "load_model_turbo_kv",
+            "passed": false,
+            "duration_s": 136.3106496334076,
+            "details": "Failed to load with TurboQuant KV: Engine core initialization failed. See root cause above. Failed core proc(s): {}",
+            "metrics": {}
+          },
+          {
+            "name": "gemma4_hw_limitation",
             "passed": true,
-            "duration_s": 2.5114004611968994,
-            "details": "SKIP (expected): vLLM not feasible: Model too large even after INT4 quantization: BF16=11710 MB, VRAM=4096 MB",
-            "metrics": {
-              "feasible": false,
-              "reason": "Model too large even after INT4 quantization: BF16=11710 MB, VRAM=4096 MB",
-              "skipped": true
-            }
+            "duration_s": 0.0,
+            "details": "Gemma 4 E2B BF16 + BNB_INT4 may not fit 4096 MB VRAM. Expected on < 6 GB hardware.",
+            "metrics": {}
           }
         ]
       }
@@ -212,10 +215,10 @@
   },
   "summary": {
     "total_tests": 1,
-    "total_steps": 12,
+    "total_steps": 13,
     "steps_passed": 12,
-    "steps_failed": 0,
-    "pass_rate": 100.0,
-    "all_passed": true
+    "steps_failed": 1,
+    "pass_rate": 92.3,
+    "all_passed": false
   }
 }
