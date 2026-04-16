@@ -93,7 +93,7 @@ def unify_kv_cache_spec_page_size(
 
 ### File 2: `vllm/v1/worker/gpu_model_runner.py` (~line 6577-6618)
 
-In `_reshape_kv_cache_tensors`, after computing `num_blocks`, slice padded tensors to their real data size before reshaping:
+In `_reshape_kv_cache_tensors`, use `torch.as_strided` for padded tensors instead of `.view(shape)`:
 
 ```python
 for layer_name in group.layer_names:
@@ -104,35 +104,100 @@ for layer_name in group.layer_names:
     num_blocks = raw_tensor.numel() // kv_cache_spec.page_size_bytes
     if isinstance(kv_cache_spec, AttentionSpec):
         has_attn = True
-
-        # If page_size is padded, slice raw tensor to real data size
-        # before reshaping. The padding bytes are allocated but never
-        # accessed by attention kernels.
-        real_page_size = kv_cache_spec.real_page_size_bytes
-        if (hasattr(kv_cache_spec, 'page_size_padded')
-                and kv_cache_spec.page_size_padded is not None
-                and kv_cache_spec.page_size_padded > real_page_size):
-            # Reshape: [total_padded_bytes] → [num_blocks, padded_page]
-            # then slice → [num_blocks, real_page] → flatten
-            raw_tensor = (raw_tensor
-                .view(num_blocks, kv_cache_spec.page_size_bytes)
-                [:, :real_page_size]
-                .contiguous()
-                .view(-1))
-
         num_blocks_per_kv_block = (
             kv_cache_spec.block_size // kernel_block_size
         )
-        # ... rest of existing reshape code unchanged ...
+        kernel_num_blocks = num_blocks * num_blocks_per_kv_block
+
+        kv_cache_shape = attn_backend.get_kv_cache_shape(
+            kernel_num_blocks,
+            kernel_block_size,
+            kv_cache_spec.num_kv_heads,
+            kv_cache_spec.head_size,
+            cache_dtype_str=self.cache_config.cache_dtype,
+        )
+        dtype = kv_cache_spec.dtype
+
+        # Check if this layer has padded page size
+        real_page_size = kv_cache_spec.real_page_size_bytes
+        is_padded = (kv_cache_spec.page_size_padded is not None
+                     and kv_cache_spec.page_size_padded > real_page_size)
+
+        if is_padded:
+            # Use torch.as_strided to create a zero-copy view that
+            # skips padding bytes. The stride on dim 0 jumps by the
+            # PADDED page size, but the shape only covers the REAL
+            # data. TurboQuant Triton kernels read strides explicitly
+            # (cache.stride(0..3)), so non-contiguous layout is safe.
+            #
+            # Gemini analysis confirmed:
+            # - as_strided avoids the memory copy that .contiguous() causes
+            # - Prefix caching hashes token IDs, not raw bytes (safe)
+            # - Block tables track indices, not byte sizes (safe)
+            # - Triton kernels pass cache.stride() explicitly (safe)
+            padded_page = kv_cache_spec.page_size_bytes  # includes padding
+            viewed = raw_tensor.view(torch.uint8)
+
+            # kv_cache_shape for TurboQuant:
+            # (kernel_num_blocks, 2, block_size, num_kv_heads, packed_dim)
+            # stride dim0 must jump by padded_page (not real_page)
+            # to skip over padding bytes between blocks
+            s = kv_cache_shape  # after stride_order permutation below
+            try:
+                kv_cache_stride_order = attn_backend.get_kv_cache_stride_order()
+            except (AttributeError, NotImplementedError):
+                kv_cache_stride_order = tuple(range(len(kv_cache_shape)))
+            s = tuple(kv_cache_shape[i] for i in kv_cache_stride_order)
+
+            # Compute strides: inner dims are contiguous,
+            # outermost dim (blocks) jumps by padded_page
+            inner_strides = []
+            stride = 1
+            for dim_size in reversed(s[1:]):
+                inner_strides.insert(0, stride)
+                stride *= dim_size
+            block_stride = padded_page  # jump over padding
+            all_strides = (block_stride, *inner_strides)
+
+            kv_cache = torch.as_strided(viewed, size=s, stride=all_strides)
+            inv_order = [
+                kv_cache_stride_order.index(i)
+                for i in range(len(kv_cache_stride_order))
+            ]
+            kv_caches[layer_name] = kv_cache.permute(*inv_order)
+        else:
+            # Standard path: no padding, direct view
+            # ... existing code for stride_order, view(dtype), view(shape), permute ...
 ```
+
+### Gemini Analysis Results (Verified)
+
+Gemini confirmed five critical points about this approach:
+
+1. **`.contiguous()` is unsafe** — allocates a copy, doubling memory. Use `as_strided` instead.
+2. **Prefix caching safe** — hashes use token IDs, not raw bytes. Padding doesn't affect cache hits.
+3. **Block tables safe** — scheduler tracks block indices, not byte sizes. Uniform physical pages work.
+4. **`torch.as_strided` is correct** — zero-copy view, TurboQuant Triton kernels read `cache.stride()` explicitly.
+5. **Edge cases:**
+   - Custom C++ CUDA kernels (paged_attention_v1/v2) assume contiguous layout — but TurboQuant uses Triton kernels that accept strides. **Verified safe.**
+   - CUDA graph capture requires fixed shapes/strides — we use `enforce_eager=True`. **Not applicable.**
+
+### TurboQuant Kernel Stride Verification
+
+Both TurboQuant Triton kernels pass `cache.stride()` explicitly:
+- `triton_turboquant_kv_update.py:648-651`: `stride_cache_0=cache.stride(0), ..., stride_cache_3=cache.stride(3)`
+- `triton_turboquant_decode.py:744-746`: `stride_k_cache_0=key_cache.stride(0), ..., stride_k_cache_2=key_cache.stride(2)`
+
+Non-contiguous `as_strided` tensors are fully supported.
 
 ### Why This Two-File Approach Works
 
-1. **Allocation** (`kv_cache_utils.py`): All layers report `page_size_bytes=59,392`. The block allocator sees uniform sizes. ✓
-2. **Reshape** (`gpu_model_runner.py`): Padded layers get sliced to `real_page_size_bytes=30,720` before `.view(kv_cache_shape)`. Shape product matches. ✓
-3. **Kernel access** (`triton_attn.py`): Attention kernels use `packed_dim` stride on uint8 data. Never touch padding. ✓
-4. **Grouping** (`_get_kv_cache_groups_uniform_page_size`): Layers group by exact spec equality. 256-head layers (with padding) and 512-head layers (without) stay in separate groups. Merge within each group succeeds. ✓
-5. **Qwen3**: Uniform pages → `len(page_sizes) <= 1` → returns early. Neither file's new code executes. ✓
+1. **Allocation** (`kv_cache_utils.py`): All layers report `page_size_bytes=59,392`. Block allocator sees uniform sizes. ✓
+2. **Reshape** (`gpu_model_runner.py`): Padded layers use `as_strided` with block_stride=59,392 but data shape using packed_dim=120. Zero-copy, no memory doubling. ✓
+3. **Kernel access** (`triton kernels`): Read `cache.stride()` explicitly. Non-contiguous safe. ✓
+4. **Grouping** (`_get_kv_cache_groups_uniform_page_size`): Layers group by exact spec equality. Separate groups for 256-head and 512-head. ✓
+5. **Prefix caching**: Hashes token IDs, not raw bytes. Padding invisible. ✓
+6. **Qwen3**: Uniform pages → `len(page_sizes) <= 1` → returns early. No new code executes. ✓
 
 ### Memory Impact
 
@@ -141,6 +206,7 @@ For 64 MiB KV cache with Gemma 4 E2B:
 - 35 layers × 59,392 = ~2.08 MiB per block
 - ~30 blocks = 480 tokens context
 - Padding waste: 28 layers × 28,672 bytes = ~784 KB per block (38%)
+- No memory copy overhead (as_strided is zero-copy)
 - Effective TurboQuant compression on 28/35 layers: ~3.3x average across all layers
 
 ## Pre-Implementation Checklist
