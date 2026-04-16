@@ -2,74 +2,68 @@
 
 **Issue:** ithllc/tqCLI#22
 **Date Created:** 2026-04-16
-**Status:** Research complete, implementation ready
+**Status:** Deep research complete. Two-file fix identified. Ready for implementation.
 **Depends on:** Fix #5 (triton_attn.py graceful skip, fork commit d9a9157)
 
 ---
 
 ## Context
 
-TurboQuant KV cache (`kv_cache_dtype='turboquant35'`) crashes during KV cache initialization for models with mixed head dimensions. Gemma 4 has head_dim=256 (28 sliding layers) and head_dim=512 (7 full attention layers), producing page sizes of 30,720 and 59,392 bytes. The `unify_kv_cache_spec_page_size()` function requires `max % min == 0`, which fails (ratio = 1.933).
+TurboQuant KV cache (`kv_cache_dtype='turboquant35'`) crashes during KV cache initialization for models with mixed head dimensions. Gemma 4 has head_dim=256 (28 sliding layers) and head_dim=512 (7 full attention layers), producing page sizes of 30,720 and 59,392 bytes.
 
-Qwen3 (uniform head_dim=128) is unaffected — it skips unification entirely.
+Qwen3 (uniform head_dim=128) is unaffected — skips unification entirely.
 
-## Solution: Use vLLM's `page_size_padded` Field
+## Solution: `page_size_padded` + Reshape Slice
 
-vLLM already has infrastructure for this exact problem. The `AttentionSpec` dataclass has a `page_size_padded` field (line 86 of `kv_cache_interface.py`) that separates allocation size from data size:
+vLLM's `AttentionSpec` has a `page_size_padded` field designed for non-uniform page sizes. However, using it alone creates a second problem: the KV cache reshape step fails because the padded tensor is larger than the shape expects.
 
-```python
-@dataclass(frozen=True, kw_only=True)
-class AttentionSpec(KVCacheSpec):
-    page_size_padded: int | None = None  # ← Padding support
+### The Two Problems
 
-    @property
-    def page_size_bytes(self) -> int:
-        real_page_size = self.real_page_size_bytes
-        if self.page_size_padded is not None:
-            assert self.page_size_padded >= real_page_size
-            return self.page_size_padded  # ← Returns padded for allocation
-        return real_page_size
-
-    @property
-    def real_page_size_bytes(self) -> int:
-        # Returns actual data size (used by attention kernels)
+**Problem 1 — Page size unification (kv_cache_utils.py:942):**
 ```
+59,392 % 30,720 = 28,672  →  NotImplementedError
+```
+Fix: Set `page_size_padded=max_page_size` on smaller layers.
 
-This pattern is already used by Mamba hybrid models (`mamba_page_size_padded` in `cache.py:103`). The attention kernels access data via `packed_dim` stride, NOT `page_size_bytes`, so padding doesn't affect kernel correctness.
+**Problem 2 — KV cache reshape (gpu_model_runner.py:6614-6616):**
+```python
+kv_cache_raw_tensors[layer_name]  # int8, num_blocks × 59,392 (padded)
+    .view(dtype)                   # uint8, num_blocks × 59,392 elements
+    .view(kv_cache_shape)          # shape product = num_blocks × 30,720
+                                   # 59,392 ≠ 30,720 → RuntimeError!
+```
+Fix: Slice the padded tensor to `real_page_size_bytes` before reshaping.
 
-### Why This Is The Correct Solution (Not LCM)
+### Important: Mamba Precedent Note
 
-**LCM approach (rejected):**
-- LCM(30720, 59392) = 890,880 bytes per block per layer
-- block_size for 256 layers: 464 tokens, for 512 layers: 240 tokens
-- On 4GB VRAM with 64 MiB KV cache: only 2 blocks fit, wasting 72% per block
-- Defeats tqCLI's purpose of KV cache compaction on constrained hardware
+The `page_size_padded` field exists on `AttentionSpec` and is used in production for **Mamba-to-attention padding** in hybrid models (Jamba). However, it has NOT been used for **attention-to-attention padding** in production. This fix is the first such use.
 
-**Padding approach (correct):**
-- Allocate all blocks at max_page_size (59,392 bytes per layer)
-- 256 layers use 30,720 bytes, padding 28,672 bytes unused
-- block_size stays at 16 tokens (fine granularity)
-- On 4GB VRAM with 64 MiB KV cache: ~32 blocks fit = 512 tokens context
-- 38% allocation waste (vs 72% for LCM), and finer granularity
+The mechanism is identical (same field, same allocation path), but the **reshape step** is different: Mamba layers have their own reshape path (`MambaSpec` branch at line 6619-6639) that uses `torch.as_strided` with explicit storage offsets. Attention layers use `.view(dtype).view(shape)` which requires exact size matching.
 
-**Qwen3 safety:** Qwen3 has uniform pages → `len(page_sizes) <= 1` → returns early at line 930. The padding code path is never entered.
+This means the reshape needs a small modification for padded attention layers — the Mamba workaround doesn't apply here.
+
+### TurboQuant dtype: `torch.uint8`
+
+Key finding: `STR_DTYPE_TO_TORCH_DTYPE["turboquant35"] = torch.uint8` (torch_utils.py:45). So:
+- `AttentionSpec.dtype = torch.uint8` for TurboQuant layers
+- `.view(uint8)` on int8 tensor = reinterpret cast (same element count)
+- Shape dimensions are in BYTES, not bf16 elements
+- `packed_dim` (64, 120, 232) represents bytes per KV per head
 
 ## Sample Implementation
 
-### Change to `vllm/v1/core/kv_cache_utils.py`
+### File 1: `vllm/v1/core/kv_cache_utils.py` (lines 941-945)
 
-Replace the `NotImplementedError` block (lines 941-945) with padding:
+Replace `raise NotImplementedError` with padding:
 
 ```python
 def unify_kv_cache_spec_page_size(
     kv_cache_spec: dict[str, KVCacheSpec],
 ) -> dict[str, KVCacheSpec]:
     """
-    Unify the page size of the given KVCacheSpec. If the page size of all layers
-    are the same, return the original KVCacheSpec. If not same, unify the page
-    size by increasing the block size of layers with smaller page size, or by
-    padding smaller pages to match the maximum when block_size scaling is not
-    possible (e.g., TurboQuant with variable head_dim).
+    Unify the page size of the given KVCacheSpec. Uses block_size scaling
+    when page sizes are evenly divisible, or page_size_padded when they
+    are not (e.g., TurboQuant with variable head_dim).
     """
     page_sizes = {layer.page_size_bytes for layer in kv_cache_spec.values()}
     if len(page_sizes) <= 1:
@@ -89,67 +83,104 @@ def unify_kv_cache_spec_page_size(
                 new_spec = replace(layer_spec, block_size=new_block_size)
             else:
                 # Non-integer ratio (e.g., TurboQuant with mixed head_dim).
-                # Pad smaller pages to match the max page size. The extra
-                # bytes are never accessed by attention kernels (they use
-                # real_page_size_bytes / packed_dim for data access).
+                # Pad to max page size. The attention kernel accesses data
+                # via packed_dim stride, so the extra bytes are never read.
                 new_spec = replace(layer_spec, page_size_padded=max_page_size)
             assert new_spec.page_size_bytes == max_page_size
             new_kv_cache_spec[layer_name] = new_spec
     return new_kv_cache_spec
 ```
 
-### Changes Required
+### File 2: `vllm/v1/worker/gpu_model_runner.py` (~line 6577-6618)
 
-| File | Change |
-|------|--------|
-| `vllm/v1/core/kv_cache_utils.py:941-945` | Replace `raise NotImplementedError` with `replace(layer_spec, page_size_padded=max_page_size)` |
+In `_reshape_kv_cache_tensors`, after computing `num_blocks`, slice padded tensors to their real data size before reshaping:
 
-That's it. One file, ~5 lines changed. The `page_size_padded` infrastructure handles everything else.
+```python
+for layer_name in group.layer_names:
+    if layer_name in self.runner_only_attn_layers:
+        continue
+    raw_tensor = kv_cache_raw_tensors[layer_name]
+    assert raw_tensor.numel() % kv_cache_spec.page_size_bytes == 0
+    num_blocks = raw_tensor.numel() // kv_cache_spec.page_size_bytes
+    if isinstance(kv_cache_spec, AttentionSpec):
+        has_attn = True
 
-### Why Only One File
+        # If page_size is padded, slice raw tensor to real data size
+        # before reshaping. The padding bytes are allocated but never
+        # accessed by attention kernels.
+        real_page_size = kv_cache_spec.real_page_size_bytes
+        if (hasattr(kv_cache_spec, 'page_size_padded')
+                and kv_cache_spec.page_size_padded is not None
+                and kv_cache_spec.page_size_padded > real_page_size):
+            # Reshape: [total_padded_bytes] → [num_blocks, padded_page]
+            # then slice → [num_blocks, real_page] → flatten
+            raw_tensor = (raw_tensor
+                .view(num_blocks, kv_cache_spec.page_size_bytes)
+                [:, :real_page_size]
+                .contiguous()
+                .view(-1))
 
-- `page_size_padded` on `AttentionSpec` already exists (kv_cache_interface.py:86)
-- `page_size_bytes` property already returns padded value (kv_cache_interface.py:88-94)
-- Block allocation uses `page_size_bytes` (padded) → correct allocation size
-- Attention kernels use `packed_dim` stride → never touch padding bytes
-- `_get_kv_cache_groups_uniform_page_size` downstream works because all `page_size_bytes` are now equal
+        num_blocks_per_kv_block = (
+            kv_cache_spec.block_size // kernel_block_size
+        )
+        # ... rest of existing reshape code unchanged ...
+```
+
+### Why This Two-File Approach Works
+
+1. **Allocation** (`kv_cache_utils.py`): All layers report `page_size_bytes=59,392`. The block allocator sees uniform sizes. ✓
+2. **Reshape** (`gpu_model_runner.py`): Padded layers get sliced to `real_page_size_bytes=30,720` before `.view(kv_cache_shape)`. Shape product matches. ✓
+3. **Kernel access** (`triton_attn.py`): Attention kernels use `packed_dim` stride on uint8 data. Never touch padding. ✓
+4. **Grouping** (`_get_kv_cache_groups_uniform_page_size`): Layers group by exact spec equality. 256-head layers (with padding) and 512-head layers (without) stay in separate groups. Merge within each group succeeds. ✓
+5. **Qwen3**: Uniform pages → `len(page_sizes) <= 1` → returns early. Neither file's new code executes. ✓
+
+### Memory Impact
+
+For 64 MiB KV cache with Gemma 4 E2B:
+- Block size: 59,392 bytes per layer per block (16 tokens)
+- 35 layers × 59,392 = ~2.08 MiB per block
+- ~30 blocks = 480 tokens context
+- Padding waste: 28 layers × 28,672 bytes = ~784 KB per block (38%)
+- Effective TurboQuant compression on 28/35 layers: ~3.3x average across all layers
 
 ## Pre-Implementation Checklist
 
-1. [ ] **Verify Qwen3 + turboquant35 baseline** — Confirm it passes (uniform pages, skips this code path)
-2. [ ] **Apply the fix** to `kv_cache_utils.py` in site-packages
-3. [ ] **Test Gemma 4 E2B + turboquant35 + BNB + CPU offload** — Should pass
-4. [ ] **Test Qwen3 + turboquant35** — Confirm no regression
-5. [ ] **Commit to fork** (`ithllc/vllm-turboquant`)
-6. [ ] **Benchmark** memory usage and tok/s with the fix
-7. [ ] **Close or update issue #22**
+1. [ ] **Qwen3 + turboquant35 baseline** — Confirm it passes before any changes
+2. [ ] **Apply File 1 fix** (kv_cache_utils.py)
+3. [ ] **Apply File 2 fix** (gpu_model_runner.py)
+4. [ ] **Test Gemma 4 E2B + turboquant35 + BNB + CPU offload**
+5. [ ] **Test Qwen3 + turboquant35** — Confirm no regression
+6. [ ] **Commit to fork** (`ithllc/vllm-turboquant`)
+7. [ ] **Benchmark** memory usage and tok/s
+8. [ ] **Update issue #22**
 
 ## Skills Needed
 
-- **Gemini MCP (`consult_gemini`)** — Verify TurboQuant packed_dim alignment with padded allocation
-- **`/tq-benchmark`** — Performance comparison with and without TurboQuant KV
+- **Gemini MCP (`consult_gemini`)** — Verify TurboQuant packed_dim alignment with padded+sliced allocation
+- **`/tq-benchmark`** — Measure tok/s improvement with TurboQuant KV vs bf16 KV
 - **`/issue-manager`** — Update #22 with results
 
 ## Key Files
 
-| File | Role |
-|------|------|
-| `vllm/v1/core/kv_cache_utils.py:914-951` | **THE FUNCTION TO FIX** |
-| `vllm/v1/kv_cache_interface.py:86-94` | `page_size_padded` infrastructure (existing, no changes needed) |
-| `vllm/v1/attention/backends/triton_attn.py:398-401` | KV cache shape uses `packed_dim` (not page_size) — confirms padding safety |
-| `vllm/v1/attention/backends/triton_attn.py:616-629` | Fix #5 graceful skip (already committed d9a9157) |
+| File | Change | Lines |
+|------|--------|-------|
+| `vllm/v1/core/kv_cache_utils.py` | Replace NotImplementedError with page_size_padded | 941-945 |
+| `vllm/v1/worker/gpu_model_runner.py` | Slice padded tensors before reshape | ~6577-6618 |
+| `vllm/v1/kv_cache_interface.py` | No change (page_size_padded already exists) | 86-94 |
+| `vllm/v1/attention/backends/triton_attn.py` | No change (fix #5 already committed) | 616-629 |
+| `vllm/utils/torch_utils.py` | No change (turboquant35→uint8 mapping exists) | 44-45 |
+
+## GoogleTurboQuant Compliance
+
+Per `../GoogleTurboQuant/docs/research/turboquant_research.md`:
+- TurboQuant operates on fixed-dimension groups with 16-dim alignment
+- Padding occurs at the page/block level, not the dimension level
+- The `packed_dim` computation is per-layer based on `head_size` — padding doesn't change it
+- The slice operation preserves the exact `packed_dim` bytes the kernel expects
+- No conflict with TurboQuant's PolarQuant + QJL two-stage compression
 
 ## Fork State
 
 - **Repo:** `ithllc/vllm-turboquant` (commit d9a9157)
-- **Installed version:** `0.1.dev6+gb236390bf` (with runtime patches in site-packages)
+- **Installed:** `0.1.dev6+gb236390bf` (with runtime patches in site-packages)
 - **Transformers:** 5.5.4
-
-## Expected Final State
-
-- Gemma 4 E2B runs with `kv_cache_dtype='turboquant35'` + BNB_INT4 + cpu_offload
-- 28 sliding layers (head_dim=256): TurboQuant KV at 4.6x compression
-- 7 full attention layers (head_dim=512): TurboQuant KV with padded allocation
-- Fix #5 (triton_attn.py) provides per-layer fallback if metadata doesn't match
-- Qwen3 AWQ + turboquant35 continues to work (uniform pages, no padding triggered)
-- Reduced CPU offloading → better than 0.2 tok/s performance
