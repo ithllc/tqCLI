@@ -1,6 +1,7 @@
 # Claude Code configuration (private — skills, MCP servers, settings)
 .claude/
 CLAUDE.md
+.mcp.json
 
 # Python
 __pycache__/
