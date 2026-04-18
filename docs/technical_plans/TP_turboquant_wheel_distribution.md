@@ -5,6 +5,8 @@ Companion to `docs/prd/PRD_turboquant_wheel_distribution.md`. Target release: **
 ## Overview
 Ship the two TurboQuant forks (`ithllc/llama-cpp-turboquant`, `ithllc/vllm-turboquant`) as installable Python wheels under renamed PyPI packages (`llama-cpp-python-turboquant`, `vllm-turboquant`), wire them into `tqcli` via `[llama-tq]` / `[vllm-tq]` extras, add a runtime Engine Auditor that detects fork-vs-upstream mismatches, and cut the 0.6.0 release with a GitHub Sponsors link — so the LinkedIn launch lands with a one-command install that actually delivers TurboQuant KV compression.
 
+**Co-release context (added 2026-04-18):** `0.6.0` already has the **tri-state agentic autonomy feature merged on `main`** in commit `c0457fd` (tqcli/core/agent_orchestrator.py + agent_tools.py + --ai-tinkering flag + 8 unit tests + Gemma 4 integration report). `pyproject.toml` and `tqcli/__init__.py` are already bumped to `0.6.0`; `CHANGELOG.md` already has a `[0.6.0] - 2026-04-18` block. This TP's Workstream C must **extend** the existing release surface, not recreate it.
+
 ## Architecture
 
 Three independent workstreams can run in parallel (use `project-manager` for worktree isolation):
@@ -191,9 +193,18 @@ dev = ["pytest>=7.0", "ruff>=0.4"]
 Delete the old `llama` and `vllm` keys entirely.
 
 **C2. Version bump.**
-1. `pyproject.toml`: `version = "0.6.0"`.
-2. `tqcli/__init__.py`: `__version__ = "0.6.0"`.
+1. `pyproject.toml`: already `version = "0.6.0"` — no change. **Do not revert.**
+2. `tqcli/__init__.py`: already `__version__ = "0.6.0"` — no change.
 3. `tqcli/cli.py`: confirm `--version` flag reads from `__version__`.
+
+**C2a. Dependency harmony check (new, added per gemini review 2026-04-18).** Before declaring Workstream C done, on a fresh venv:
+```bash
+pip install -e ".[vllm-tq]" --find-links <vllm-turboquant-release>
+pip install -e ".[dev]"
+python -m pytest tests/test_agent_orchestrator.py -x
+python tests/test_integration_agent_modes.py
+```
+Verify that the vllm-turboquant wheel's pinned `torch` / `numpy` / `pydantic` do not downgrade anything the agent orchestrator depends on. If any of the agent unit tests fail after the wheel is installed but pass with upstream vllm, that's a blocking regression.
 
 ### Files
 - `pyproject.toml` (Modified)
@@ -288,6 +299,8 @@ def run_audit(system: SystemInfo) -> list[EngineAuditResult]:
 - Call `run_audit(get_system_info())` once per CLI invocation before dispatching to subcommands.
 - Skip the audit when `TQCLI_SUPPRESS_AUDIT=1` (so CI and `--json` users can silence it).
 - In `--json` mode, emit the audit as part of the metadata object on stderr, not as a visual panel.
+- **Ordering contract with the agent orchestrator (added per gemini review 2026-04-18):** when `--ai-tinkering` or the unrestricted flag is active, `render_audit_warnings()` MUST finish writing to stderr AND `console.file.flush()` MUST be called BEFORE `InteractiveSession` instantiates the `AgentOrchestrator`. Otherwise, Rich's buffered output can interleave with the orchestrator's streamed tool-call tags, producing a garbled stream that confuses both the user and any downstream parser. Add an `assert` in a unit test that captures `sys.stderr` and verifies the panel's final newline appears before the first orchestrator stream chunk.
+- **Internal API for agent tools (added per gemini review 2026-04-18):** expose `engine_auditor.get_status() -> dict[str, EngineAuditResult]` (module-level, cached after the first call) so a future agent tool can report authoritative TurboQuant status to the LLM without re-importing `vllm` / `llama_cpp`. Not wired in this release; the hook is a one-line addition to the module that unblocks later work.
 
 **C6. Tests.** `tests/test_engine_auditor.py`:
 - Mock `llama_cpp` with and without `TURBOQUANT_BUILD`; assert `is_turboquant_fork` flips.
@@ -346,22 +359,28 @@ github: [ithllc]
 **C12. `docs/contributing/RELEASING_WHEELS.md` (new):**
 - Step-by-step maintainer runbook for cutting a new `vllm-turboquant` wheel from WSL2 (mirrors Phase 3, for future releases).
 
-**C13. `CHANGELOG.md` — new `[0.6.0]` block:**
+**C13. `CHANGELOG.md` — EXTEND the existing `[0.6.0]` block (do not replace).** The block already contains the tri-state agentic autonomy entries (commit `c0457fd`, 2026-04-18). APPEND the wheel-distribution entries under the same headers so the 0.6.0 release notes present one coherent story:
 
 ```markdown
-## [0.6.0] - <release-date>
+## [0.6.0] - 2026-04-18
 
 ### Added
+- **Tri-state agentic autonomy** — already present, DO NOT TOUCH.
+- **Core agent tools** — already present, DO NOT TOUCH.
+- **Agent tests** — already present, DO NOT TOUCH.
 - **TurboQuant fork wheels** — `llama-cpp-python-turboquant` on PyPI (Linux/macOS/Windows,
   CPU + CUDA + Metal), `vllm-turboquant` as a GitHub Release asset
   (Linux x86_64 + CUDA 12.8). Pinned to the 2026-04-17 Gemma 4 + BNB_INT4 +
   CPU offload + turboquant35 commit.
 - **Engine Auditor** (`tqcli/core/engine_auditor.py`) — detects fork-vs-upstream
   on startup, prints a high-visibility panel when the GPU supports TurboQuant
-  but an upstream engine is installed.
+  but an upstream engine is installed. Flushes before the agent orchestrator's
+  first stream in agent modes. Exposes `get_status()` for future agent-tool use.
 - **GitHub Sponsors** — `.github/FUNDING.yml`.
 
 ### Changed
+- `InteractiveSession` accepts `agent_mode` — already present, DO NOT TOUCH.
+- `FileReadTool.safety` — already present, DO NOT TOUCH.
 - `pyproject.toml` extras replaced: `[llama]` / `[vllm]` / `[all]` → `[llama-tq]` /
   `[vllm-tq]` / `[all]`. The old names no longer install anything.
 
@@ -410,14 +429,24 @@ Prove the full story works end-to-end before tagging and announcing.
   pip install tqcli[all] --find-links https://github.com/ithllc/vllm-turboquant/releases/latest
   tqcli system info
   tqcli chat --kv-quant turbo3 --prompt "Two plus two?" --json
+  # Agent-mode smoke (non-negotiable per gemini review 2026-04-18):
+  tqcli chat --ai-tinkering < /dev/null   # must fail fast with click.UsageError when stdin is closed, NOT hang
+  tqcli --stop-trying-to-control-everything-and-just-let-go chat \
+        --prompt "Emit plain text: done." --max-agent-steps 2
   ```
-  Assert: Engine Auditor stays silent; `--json` response includes TurboQuant metadata; exit code 0.
+  Assert:
+  - Engine Auditor stays silent on capable hardware with the forks installed.
+  - `--json` response includes TurboQuant metadata; exit code 0.
+  - `--ai-tinkering` with closed stdin exits non-zero fast (no hang). This
+    guards the `--json + --ai-tinkering` fail-fast contract added in `c0457fd`.
+  - Unrestricted headless run terminates within `max_agent_steps` without
+    leaving orphan vLLM worker processes.
 
 **V2. Regression pass.** Run the full existing integration suite from `tests/integration_reports/turboquant_kv_comparison_report.md` on the maintainer's WSL2 box. All 7/7 tests must stay green, specifically test_7 (Gemma 4 E2B + BNB_INT4 + CPU offload + turboquant35).
 
 **V3. Tag and release.**
 1. `git tag v0.6.0 && git push --tags` on the tqCLI main branch.
-2. `gh release create v0.6.0` on ithllc/tqCLI with the CHANGELOG 0.6.0 body.
+2. `gh release create v0.6.0` on ithllc/tqCLI with the CHANGELOG 0.6.0 body. The release body MUST co-advertise: (a) `--ai-tinkering` + `--stop-trying-to-control-everything-and-just-let-go` agent modes, (b) `llama-cpp-python-turboquant` PyPI install, (c) `vllm-turboquant` GitHub-Releases install, with the exact one-liner for each. One release, one LinkedIn post.
 3. Publish `llama-cpp-python-turboquant` via the Phase 2 workflow (tag `v0.3.0-tq1` on the fork).
 4. Verify `vllm-turboquant` Phase 3 release is attached and discoverable.
 
@@ -444,6 +473,9 @@ All five platform matrix cells in V1 return exit code 0 with the expected TurboQ
 | Users on CUDA < 12.8 install the vllm fork and hit runtime crashes | Low | High | Engine Auditor and `check_turboquant_compatibility` already gate at runtime; add a `pre-install` check in the fork's `setup.py` that warns (not errors) if CUDA is < 12.8. |
 | PyPI Trusted Publishing OIDC setup fails on first tag push | Medium | Low | Document manual fallback: one-time API token + `twine upload` from the maintainer's box. |
 | Users on macOS expect vLLM and install `[all]` on a Mac | Medium | Low | `[all]` extra's `vllm-turboquant==...` will fail to resolve a wheel on macOS — document clearly that macOS users should use `[llama-tq]`, not `[all]`. Engine Auditor also stays silent on Mac re: vLLM. |
+| **Engine Auditor panel interleaves with orchestrator stream output** (added 2026-04-18 per gemini review) | Medium | Medium | Enforce the Phase 5 C5 ordering contract: `render_audit_warnings()` must `console.file.flush()` BEFORE `AgentOrchestrator.__init__`. Add a unit test that captures stderr and asserts the panel's final newline precedes the first stream chunk. |
+| **vllm-turboquant wheel's pinned torch/numpy/pydantic downgrades agent orchestrator deps** (added 2026-04-18 per gemini review) | Medium | High | Run the Phase 4 C2a dependency-harmony check before release. If `tests/test_agent_orchestrator.py` fails with the fork installed but passes with upstream, block the release until deps are reconciled in one of the wheels. |
+| **Docker image ships upstream vllm because Dockerfile wasn't updated** | Low | Medium | Section 8 of the PRD now mandates the Docker layer update; CI should build the image and run `pip show llama-cpp-python-turboquant vllm-turboquant` as a smoke step. |
 
 ## Rollback Plan
 

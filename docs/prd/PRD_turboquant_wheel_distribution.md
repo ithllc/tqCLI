@@ -5,6 +5,8 @@
 
 **Elevator Pitch:** Make `pip install tqcli[llama-tq]` and `pip install tqcli[vllm-tq]` deliver the TurboQuant-capable forks of llama.cpp and vLLM as pre-built wheels so every public user gets working TurboQuant KV cache compression out of the box — no source builds, no silent upstream fallback, no "why doesn't `--kv-quant turbo3` do anything" bug reports.
 
+**Release coupling note (added 2026-04-18):** `0.6.0` now ships two features together — this wheel-distribution workstream AND the tri-state agentic autonomy work already landed on `main` (commit `c0457fd`). The wheel distribution is the "release train"; the agent modes are the "cargo". If the wheel build fails, the release slips for both. Rationale: shipping agents without a one-command install would hard-gate LinkedIn-scroller adoption.
+
 **Problem Solved:** Today `pyproject.toml` pulls upstream `llama-cpp-python` and `vllm` via the `[llama]` / `[vllm]` extras. Upstream does not understand the TurboQuant flags emitted by `tqcli/core/kv_quantizer.py` (`cache_type_k=turbo3/4/2`, `kv_cache_dtype=turboquant35`, `enable_turboquant=True`, `attention_backend=TRITON_ATTN`). The CLI's graceful-fallback path silently downgrades to `kv:none` without telling the user, so the headline feature appears broken after a clean install. This blocks the public LinkedIn launch and the GitHub Sponsors page.
 
 **Type:** Distribution / release-engineering feature added to the existing `tqCLI` product. Ships as tqCLI 0.6.0.
@@ -24,7 +26,7 @@
   - **`vllm-turboquant`** — single wheel: Linux x86_64 + CUDA 12.8 + Python 3.10/3.11/3.12, **one-off manual build** on the maintainer's WSL2 workstation (vLLM compile needs 16–32 GB RAM; cheapest path to launch). Published as a **GitHub Release asset** on the `ithllc/vllm-turboquant` repo.
 - **Replace** the existing `[llama]` and `[vllm]` extras in `pyproject.toml` with `[llama-tq]` and `[vllm-tq]`. Update `[all]` to `[llama-tq,vllm-tq]`. No upstream-pulling extras remain.
 - Pin `vllm-turboquant` to the exact commit that has "BNB_INT4 + CPU offload + turboquant35" on Gemma 4 E2B verified in `tests/integration_reports/turboquant_kv_comparison_report.md` (Section C.2).
-- New runtime **Engine Auditor** in `tqcli/core/system_info.py` that detects (a) whether the installed engine is the fork vs. upstream, (b) hardware capability (CUDA ≥ 12.8, SM ≥ 8.6), and prints a loud colored message at CLI startup when a user is on a capable GPU but running vanilla vLLM or vanilla llama-cpp-python.
+- New runtime **Engine Auditor** in `tqcli/core/system_info.py` that detects (a) whether the installed engine is the fork vs. upstream, (b) hardware capability (CUDA ≥ 12.8, SM ≥ 8.6), and prints a loud colored message at CLI startup when a user is on a capable GPU but running vanilla vLLM or vanilla llama-cpp-python. The Auditor MUST: (1) stay silent in `--json` headless mode and emit its findings as a structured field in the JSON metadata object on stderr; (2) flush its Rich panel to stderr BEFORE the agent orchestrator's first `chat_stream` call in `--ai-tinkering` or `--stop-trying-to-control-everything-and-just-let-go` modes, so the panel cannot interleave with streamed tool-call text or observations; (3) expose an `engine_auditor.get_status()` internal API so future agent tools (e.g., a tool-mode `tq-system-info`) can report "TurboQuant: active|fallback" to the LLM without re-detecting.
 - `.github/FUNDING.yml` with the GitHub Sponsors link.
 - Update `README.md`, `docs/GETTING_STARTED.md`, `docs/architecture/turboquant_kv.md`, and `docs/architecture/inference_engines.md` to reflect the new install paths.
 - Update `CHANGELOG.md` for 0.6.0.
@@ -61,7 +63,7 @@
    dev      = ["pytest>=7.0", "ruff>=0.4"]
    ```
 
-5. **Engine Auditor (loud fork-vs-upstream detection).** On CLI startup, `tqcli system info` and every `tqcli chat` invocation checks: does `llama_cpp` / `vllm` import expose a TurboQuant sentinel (e.g. `llama_cpp.TURBOQUANT_BUILD = True`, `vllm.TURBOQUANT_ENABLED = True`)? If not, and hardware is TurboQuant-capable, print a high-visibility colored block with the exact `pip install` command to fix it. If hardware is incapable (e.g. Pascal, no CUDA), stay silent — graceful fallback continues to apply.
+5. **Engine Auditor (loud fork-vs-upstream detection).** On CLI startup, `tqcli system info` and every `tqcli chat` invocation checks: does `llama_cpp` / `vllm` import expose a TurboQuant sentinel (e.g. `llama_cpp.TURBOQUANT_BUILD = True`, `vllm.TURBOQUANT_ENABLED = True`)? If not, and hardware is TurboQuant-capable, print a high-visibility colored block with the exact `pip install` command to fix it. If hardware is incapable (e.g. Pascal, no CUDA), stay silent — graceful fallback continues to apply. In agent modes, the auditor's findings ALSO surface via `engine_auditor.get_status()` so the LLM can explain to itself (and the user) why KV-cache growth is 4× larger than expected on a mis-configured install — this prevents the agent from hallucinating explanations for behavior it could have observed directly.
 
 6. **BNB_INT4 + CPU offload + turboquant35 Gemma 4 path.** The pinned `vllm-turboquant` release corresponds to the commit that produced the 2026-04-17 integration run: Gemma 4 E2B on 4 GB VRAM + 9.9 GB `cpu_offload_gb` + `kv_cache_dtype=turboquant35`, verified end-to-end (`tests/integration_reports/turboquant_kv_comparison_report.md`, Section C.2). The PyPI version string encodes this (e.g. `0.6.0.post20260417`).
 
@@ -123,14 +125,18 @@
 - **Time to launch:** All success metrics measurable within 7 days of starting implementation, enabling the LinkedIn announcement the following weekend.
 
 ## 8. Release & Documentation Requirements (v0.6.0)
-To properly include this feature in the upcoming `0.6.0` release, the following files must be updated:
-- `pyproject.toml`: bump version to `0.6.0`; replace `[llama]` and `[vllm]` extras with `[llama-tq]` and `[vllm-tq]`; update `[all]`.
-- `tqcli/__init__.py`: bump `__version__` to `0.6.0`.
-- `CHANGELOG.md`: add `[0.6.0] - <release-date>` section under "Added" / "Changed" / "Removed".
-- `README.md`: replace the "Install" commands with the `-tq` variants; add "What's new in 0.6.0" section at the top.
+To properly include this feature in the upcoming `0.6.0` release, the following files must be updated. **Note:** `pyproject.toml` and `tqcli/__init__.py` are already at `0.6.0` and `CHANGELOG.md` already carries a `[0.6.0] - 2026-04-18` block covering the agent-modes work (commit `c0457fd`). The wheel-distribution work must *extend* that block, not replace it.
+
+- `pyproject.toml`: replace `[llama]` and `[vllm]` extras with `[llama-tq]` and `[vllm-tq]`; update `[all]`. Version is already `0.6.0`.
+- `tqcli/__init__.py`: already at `0.6.0` — leave alone.
+- `CHANGELOG.md`: **append** to the existing `[0.6.0]` block; do not overwrite the tri-state agentic autonomy entries already recorded there.
+- `README.md`: replace the "Install" commands with the `-tq` variants; extend the existing "What's new in 0.6.0" section (don't clobber the agent-modes bullets).
 - `docs/GETTING_STARTED.md`: update Step 1 install commands and the platform-specific sections (macOS, Linux, WSL2, Windows) to use `[llama-tq]` / `[vllm-tq]`.
 - `docs/architecture/turboquant_kv.md`: add a "Distribution" section linking to the PyPI page and the GitHub Release for the vLLM fork.
 - `docs/architecture/inference_engines.md`: document the Engine Auditor and the fork sentinel attributes.
-- `docs/examples/USAGE.md`: update the `[vllm]` install example to `[vllm-tq]`.
+- `docs/architecture/agent_orchestrator.md` (already shipped in commit `c0457fd`): cross-reference the Engine Auditor and note the stderr-flush ordering contract (see Key Feature 5). No new file — just a small paragraph.
+- `docs/examples/USAGE.md`: update the `[vllm]` install example to `[vllm-tq]`. Do not touch §7 ("Agent Modes — Planned (0.6.0)"); it already ships in `c0457fd`.
 - `.github/FUNDING.yml`: create with `github: ithllc`.
 - `docs/contributing/RELEASING_WHEELS.md` (new): maintainer runbook for cutting a new `vllm-turboquant` wheel from WSL2.
+- `Dockerfile` / any container image: update to use `pip install tqcli[all] --find-links <vllm-turboquant-release>` so the container gets the forks. If no Dockerfile exists in-tree, add this as a deployment-notes bullet to `docs/GETTING_STARTED.md` rather than skipping it.
+- Release notes on the `v0.6.0` GitHub Release MUST co-advertise both feature lines (wheels + agent modes) — one bullet per tier of agentic autonomy, one bullet per backend wheel — so the LinkedIn post has a single link that delivers both stories.
