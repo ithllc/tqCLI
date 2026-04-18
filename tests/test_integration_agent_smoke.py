@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
-"""Agent modes integration test — exercises the AI Tinkering / Unrestricted
-orchestrator end-to-end with a real Gemma 4 E2B model on both engines.
+"""Agent modes INFRASTRUCTURE SMOKE test.
 
-Covers:
-  Test A: llama.cpp + Gemma 4 E2B Q4_K_M + TurboQuant turbo3 KV + orchestrator
-          (ai_tinkering mode, auto-approve via confirm_fn)
-  Test B: vLLM + Gemma 4 E2B BF16 → BNB_INT4 + CPU offload + turboquant35 KV +
-          orchestrator (unrestricted ReAct mode)
+Scope: verifies that the orchestrator wires cleanly against a real
+TurboQuant-loaded backend on both engines WITHOUT crashing. It does NOT
+verify parse→execute→observation→loop functionality against a live
+model — Gemma 4 E2B (2 B params, not tool-fine-tuned) does not reliably
+emit protocol-compliant `<tool_call>` tags, so any functionality check
+driven by the real model is flaky at best and silently null at worst.
 
-Each test records:
-  - Model + engine load with TurboQuant KV actually active (not kv:none)
-  - Orchestrator round-trip: tool schema injected into system prompt,
-    engine.chat_stream consumed, observations fed back as new user turns,
-    max_steps bound honored.
-  - Model compliance data point — did the quantized 2 B model actually emit
-    a well-formed <staged_tool_call> / <tool_call> tag? This is recorded
-    but NOT asserted; the orchestrator's correctness does not depend on
-    whether a tiny edge model happens to follow the protocol on a given
-    run.
-  - Tokens/s, load time, total duration.
+Functional end-to-end verification lives in
+`test_integration_agent_functional.py`, which uses a playback engine to
+guarantee protocol-compliant emissions regardless of model compliance,
+then delegates the follow-up turn to the real quantized backend so the
+round-trip is still exercised against live TurboQuant inference.
+
+This smoke test is useful during dev as a "doesn't crash on real engine"
+gate; it must NOT be presented as feature verification.
 
 Report outputs:
-  tests/integration_reports/agent_modes_report.md
-  tests/integration_reports/agent_modes_report.json
+  tests/integration_reports/agent_modes_smoke_report.md
+  tests/integration_reports/agent_modes_smoke_report.json
 """
 
 from __future__ import annotations
@@ -590,16 +587,16 @@ def main() -> int:
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     md = generate_markdown(results, sys_info)
-    (REPORT_DIR / "agent_modes_report.md").write_text(md)
+    (REPORT_DIR / "agent_modes_smoke_report.md").write_text(md)
     js = generate_json(results, sys_info)
-    (REPORT_DIR / "agent_modes_report.json").write_text(json.dumps(js, indent=2))
+    (REPORT_DIR / "agent_modes_smoke_report.json").write_text(json.dumps(js, indent=2))
 
     total_pass = sum(1 for r in results if r.passed)
     print(f"\n{'=' * 70}")
     print(f"RESULTS: {total_pass}/{len(results)} tests passed")
     print(f"Reports:")
-    print(f"  {REPORT_DIR / 'agent_modes_report.md'}")
-    print(f"  {REPORT_DIR / 'agent_modes_report.json'}")
+    print(f"  {REPORT_DIR / 'agent_modes_smoke_report.md'}")
+    print(f"  {REPORT_DIR / 'agent_modes_smoke_report.json'}")
     print(f"{'=' * 70}")
     return 0 if total_pass == len(results) else 1
 

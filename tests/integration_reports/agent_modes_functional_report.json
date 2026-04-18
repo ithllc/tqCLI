@@ -1,0 +1,765 @@
+{
+  "generated": "2026-04-18T18:30:49.488673",
+  "system": {
+    "os": "Linux (Ubuntu 22.04.4 LTS) (WSL2)",
+    "gpu": "NVIDIA RTX A2000 Laptop GPU",
+    "vram_mb": 4096,
+    "ram_mb": 31956,
+    "is_wsl": true,
+    "cuda_version": "13.0",
+    "cuda_toolkit": "12.8"
+  },
+  "tests": [
+    {
+      "test_id": "T0a",
+      "title": "T0 zero-shot (ai_tinkering, llama.cpp gemma-4-e2b-it-Q4_K_M)",
+      "engine": "llama.cpp",
+      "model": "gemma-4-e2b-it-Q4_K_M",
+      "mode": "ai_tinkering",
+      "kv_quant": "turbo3 (cache_type_k=turbo3, cache_type_v=turbo3)",
+      "is_data_point": true,
+      "started": "2026-04-18T18:09:33",
+      "finished": "2026-04-18T18:09:41",
+      "duration_s": 8.209,
+      "passed": true,
+      "pass_count": 1,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "zero_shot_data_point",
+          "passed": true,
+          "duration_s": 8.2092,
+          "details": "emitted_staged_tool_call=True | chars=117 | head=<staged_tool_call>{ \"name\":\"tq-file-read\", \"arguments\":{ \"path\":\"/tmp/tqcli_agent_fixture.txt\" } }</staged_tool_call>",
+          "metrics": {
+            "emitted_tag": true,
+            "chars": 117,
+            "tag_name": "staged_tool_call",
+            "raw_output": "<staged_tool_call>{\n\"name\":\"tq-file-read\",\n\"arguments\":{\n\"path\":\"/tmp/tqcli_agent_fixture.txt\"\n}\n}</staged_tool_call>"
+          }
+        }
+      ]
+    },
+    {
+      "test_id": "T1_lg",
+      "title": "T1 approve actionable (llama.cpp gemma-4-e2b-it-Q4_K_M, ai_tinkering)",
+      "engine": "llama.cpp",
+      "model": "gemma-4-e2b-it-Q4_K_M",
+      "mode": "ai_tinkering",
+      "kv_quant": "turbo3 (cache_type_k=turbo3, cache_type_v=turbo3)",
+      "is_data_point": false,
+      "started": "2026-04-18T18:09:41",
+      "finished": "2026-04-18T18:09:50",
+      "duration_s": 9.615,
+      "passed": true,
+      "pass_count": 6,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "spy_file_read_called_once",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "calls=[{'path': '/tmp/tqcli_agent_fixture.txt'}]",
+          "metrics": {
+            "call_count": 1
+          }
+        },
+        {
+          "name": "actionable_tool_confirmed_once",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "confirm_fn_calls=[('tq-file-read', {'path': '/tmp/tqcli_agent_fixture.txt'}, 'actionable')]",
+          "metrics": {}
+        },
+        {
+          "name": "observation_appended",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "hist_len=5 / hist_before=2 / obs_count=1 / obs_head=Observation:\nsecret_word=ALPHACHARLIE-5d1b1d9d09e9\n",
+          "metrics": {
+            "observation_turns": 1
+          }
+        },
+        {
+          "name": "real_engine_invoked_after_observation",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "pb.call_count=2 / scripted=1 / real=1",
+          "metrics": {
+            "real_calls": 1,
+            "scripted_calls": 1
+          }
+        },
+        {
+          "name": "secret_word_in_real_followup",
+          "passed": true,
+          "duration_s": 9.6152,
+          "details": "secret=ALPHACHARLIE-5d1b1d9d09e9 | found_in_final=True | final_len=273 | final_head=Thank you for providing the observation.  The secret word is: **ALPHACHARLIE-5d1b1d9d09e9**  How would you like me to proceed with this information? For example, are you asking me to: 1. Verify this against something else? 2. Use this word ",
+          "metrics": {
+            "secret_found": true,
+            "secret_word": "ALPHACHARLIE-5d1b1d9d09e9",
+            "final_text_chars": 273
+          }
+        },
+        {
+          "name": "turboquant_kv_active",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "kv_params={'cache_type_k': 'turbo3', 'cache_type_v': 'turbo3'}",
+          "metrics": {}
+        }
+      ]
+    },
+    {
+      "test_id": "T2",
+      "title": "T2 deny actionable (llama.cpp Gemma 4, ai_tinkering)",
+      "engine": "llama.cpp",
+      "model": "gemma-4-e2b-it-Q4_K_M",
+      "mode": "ai_tinkering",
+      "kv_quant": "turbo3 (cache_type_k=turbo3, cache_type_v=turbo3)",
+      "is_data_point": false,
+      "started": "2026-04-18T18:09:50",
+      "finished": "2026-04-18T18:09:50",
+      "duration_s": 0.0,
+      "passed": true,
+      "pass_count": 4,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "confirm_fn_called_once",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "confirm_calls=1",
+          "metrics": {}
+        },
+        {
+          "name": "terminal_exec_never_called",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "calls=[]",
+          "metrics": {}
+        },
+        {
+          "name": "observation_is_denial",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "obs_head=Observation:\nUser denied execution. Request alternatives.",
+          "metrics": {}
+        },
+        {
+          "name": "loop_terminated_after_denial",
+          "passed": true,
+          "duration_s": 0.0001,
+          "details": "scripted=1 real=0",
+          "metrics": {}
+        }
+      ]
+    },
+    {
+      "test_id": "T3",
+      "title": "T3 edit actionable (llama.cpp Gemma 4, ai_tinkering)",
+      "engine": "llama.cpp",
+      "model": "gemma-4-e2b-it-Q4_K_M",
+      "mode": "ai_tinkering",
+      "kv_quant": "turbo3 (cache_type_k=turbo3, cache_type_v=turbo3)",
+      "is_data_point": false,
+      "started": "2026-04-18T18:09:50",
+      "finished": "2026-04-18T18:09:56",
+      "duration_s": 5.392,
+      "passed": true,
+      "pass_count": 3,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "exec_called_once_with_edited_args",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "calls=[{'command': 'touch /tmp/tq_t3_mark'}]",
+          "metrics": {}
+        },
+        {
+          "name": "edited_mark_exists",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "path=/tmp/tq_t3_mark exists=True",
+          "metrics": {}
+        },
+        {
+          "name": "original_mark_never_created",
+          "passed": true,
+          "duration_s": 5.3919,
+          "details": "path=/tmp/tq_t3_ORIGINAL exists=False",
+          "metrics": {}
+        }
+      ]
+    },
+    {
+      "test_id": "T4_lg",
+      "title": "T4 unrestricted ReAct (llama.cpp gemma-4-e2b-it-Q4_K_M)",
+      "engine": "llama.cpp",
+      "model": "gemma-4-e2b-it-Q4_K_M",
+      "mode": "unrestricted",
+      "kv_quant": "turbo3 (cache_type_k=turbo3, cache_type_v=turbo3)",
+      "is_data_point": false,
+      "started": "2026-04-18T18:09:56",
+      "finished": "2026-04-18T18:10:01",
+      "duration_s": 4.949,
+      "passed": true,
+      "pass_count": 6,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "confirm_fn_never_called",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "confirm_calls=0",
+          "metrics": {}
+        },
+        {
+          "name": "file_read_called_once",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "calls=[{'path': '/tmp/tqcli_agent_fixture.txt'}]",
+          "metrics": {}
+        },
+        {
+          "name": "observation_carries_secret",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "obs_head=Observation:\nsecret_word=ALPHACHARLIE-e472127f2261\n",
+          "metrics": {}
+        },
+        {
+          "name": "real_engine_followup_invoked",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "real=1 scripted=1",
+          "metrics": {}
+        },
+        {
+          "name": "secret_word_in_real_followup",
+          "passed": true,
+          "duration_s": 4.9487,
+          "details": "secret=ALPHACHARLIE-e472127f2261 / found_in_final=True / final_head=Okay, I have read the observation.  The secret word is: **ALPHACHARLIE-e472127f2261**",
+          "metrics": {
+            "secret_found": true,
+            "secret_word": "ALPHACHARLIE-e472127f2261"
+          }
+        },
+        {
+          "name": "turboquant_kv_active",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "kv_params={'cache_type_k': 'turbo3', 'cache_type_v': 'turbo3'}",
+          "metrics": {}
+        }
+      ]
+    },
+    {
+      "test_id": "T5",
+      "title": "T5 dead tool name (llama.cpp Gemma 4, unrestricted)",
+      "engine": "llama.cpp",
+      "model": "gemma-4-e2b-it-Q4_K_M",
+      "mode": "unrestricted",
+      "kv_quant": "turbo3 (cache_type_k=turbo3, cache_type_v=turbo3)",
+      "is_data_point": false,
+      "started": "2026-04-18T18:10:01",
+      "finished": "2026-04-18T18:10:11",
+      "duration_s": 10.623,
+      "passed": true,
+      "pass_count": 3,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "no_real_tool_invoked",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "total_spy_calls=0",
+          "metrics": {}
+        },
+        {
+          "name": "observation_is_error",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "obs_head=Observation:\nERROR: unknown tool 'nonexistent_tool'",
+          "metrics": {}
+        },
+        {
+          "name": "orchestrator_did_not_crash",
+          "passed": true,
+          "duration_s": 10.6231,
+          "details": "ran to completion",
+          "metrics": {}
+        }
+      ]
+    },
+    {
+      "test_id": "T0b",
+      "title": "T0 zero-shot (ai_tinkering, llama.cpp qwen3-4b-Q4_K_M)",
+      "engine": "llama.cpp",
+      "model": "qwen3-4b-Q4_K_M",
+      "mode": "ai_tinkering",
+      "kv_quant": "turbo3 (cache_type_k=turbo3, cache_type_v=turbo3)",
+      "is_data_point": true,
+      "started": "2026-04-18T18:10:16",
+      "finished": "2026-04-18T18:10:45",
+      "duration_s": 28.926,
+      "passed": true,
+      "pass_count": 1,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "zero_shot_data_point",
+          "passed": true,
+          "duration_s": 28.9256,
+          "details": "emitted_staged_tool_call=False | chars=1121 | head=<think> Okay, the user wants me to use the tq-file-read tool to read the file at /tmp/tqcli_agent_fixture.txt. They specified that the response should be exactl",
+          "metrics": {
+            "emitted_tag": false,
+            "chars": 1121,
+            "tag_name": "staged_tool_call",
+            "raw_output": "<think>\nOkay, the user wants me to use the tq-file-read tool to read the file at /tmp/tqcli_agent_fixture.txt. They specified that the response should be exactly one staged_tool_call block with JSON inside. Let me make sure I follow the format correctly.\n\nFirst, I need to check if the tool name is correct. The tool is called tq-file-read, which matches the example given. The arguments should include the path as a string. The path provided is \"/tmp/tqcli_agent_fixture.txt\", so I need to enclose that in quotes. \n\nWait, the user mentioned to emit exactly one tool_call tag. So I need to ensure there's no extra text or formatting. The JSON should be properly structured with the name and arguments. Let me double-check the syntax. The key is \"name\" with the tool name, and \"arguments\" as an object with the path. \n\nI should also verify that there are no trailing commas or missing brackets. The JSON should be valid. Let me construct it step by step. The name is \"tq-file-read\", arguments is a JSON object with \"path\" as the key and the file path as the value. \n\nYes, that's correct. So the final JSON should look like"
+          }
+        }
+      ]
+    },
+    {
+      "test_id": "T1_lq",
+      "title": "T1 approve actionable (llama.cpp qwen3-4b-Q4_K_M, ai_tinkering)",
+      "engine": "llama.cpp",
+      "model": "qwen3-4b-Q4_K_M",
+      "mode": "ai_tinkering",
+      "kv_quant": "turbo3 (cache_type_k=turbo3, cache_type_v=turbo3)",
+      "is_data_point": false,
+      "started": "2026-04-18T18:10:45",
+      "finished": "2026-04-18T18:11:09",
+      "duration_s": 23.925,
+      "passed": true,
+      "pass_count": 6,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "spy_file_read_called_once",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "calls=[{'path': '/tmp/tqcli_agent_fixture.txt'}]",
+          "metrics": {
+            "call_count": 1
+          }
+        },
+        {
+          "name": "actionable_tool_confirmed_once",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "confirm_fn_calls=[('tq-file-read', {'path': '/tmp/tqcli_agent_fixture.txt'}, 'actionable')]",
+          "metrics": {}
+        },
+        {
+          "name": "observation_appended",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "hist_len=5 / hist_before=2 / obs_count=1 / obs_head=Observation:\nsecret_word=ALPHACHARLIE-c003f369de3c\n",
+          "metrics": {
+            "observation_turns": 1
+          }
+        },
+        {
+          "name": "real_engine_invoked_after_observation",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "pb.call_count=2 / scripted=1 / real=1",
+          "metrics": {
+            "real_calls": 1,
+            "scripted_calls": 1
+          }
+        },
+        {
+          "name": "secret_word_in_real_followup",
+          "passed": true,
+          "duration_s": 23.9248,
+          "details": "secret=ALPHACHARLIE-c003f369de3c | found_in_final=True | final_len=771 | final_head=<think> Okay, the user asked me to read the fixture, and I used the tool to read the file. The observation shows that the secret word is ALPHACHARLIE-c003f369de3c. I need to present this information clearly. Let me check if there's anything",
+          "metrics": {
+            "secret_found": true,
+            "secret_word": "ALPHACHARLIE-c003f369de3c",
+            "final_text_chars": 771
+          }
+        },
+        {
+          "name": "turboquant_kv_active",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "kv_params={'cache_type_k': 'turbo3', 'cache_type_v': 'turbo3'}",
+          "metrics": {}
+        }
+      ]
+    },
+    {
+      "test_id": "T4_lq",
+      "title": "T4 unrestricted ReAct (llama.cpp qwen3-4b-Q4_K_M)",
+      "engine": "llama.cpp",
+      "model": "qwen3-4b-Q4_K_M",
+      "mode": "unrestricted",
+      "kv_quant": "turbo3 (cache_type_k=turbo3, cache_type_v=turbo3)",
+      "is_data_point": false,
+      "started": "2026-04-18T18:11:09",
+      "finished": "2026-04-18T18:11:35",
+      "duration_s": 26.5,
+      "passed": true,
+      "pass_count": 6,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "confirm_fn_never_called",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "confirm_calls=0",
+          "metrics": {}
+        },
+        {
+          "name": "file_read_called_once",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "calls=[{'path': '/tmp/tqcli_agent_fixture.txt'}]",
+          "metrics": {}
+        },
+        {
+          "name": "observation_carries_secret",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "obs_head=Observation:\nsecret_word=ALPHACHARLIE-5bf0d6f09a46\n",
+          "metrics": {}
+        },
+        {
+          "name": "real_engine_followup_invoked",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "real=1 scripted=1",
+          "metrics": {}
+        },
+        {
+          "name": "secret_word_in_real_followup",
+          "passed": true,
+          "duration_s": 26.5004,
+          "details": "secret=ALPHACHARLIE-5bf0d6f09a46 / found_in_final=True / final_head=<think> Okay, the user asked me to read a file, and I used the tq-file-read tool to read the file at /tmp/tqcli_agent_fixture.txt. The observation from that action was \"secret_word=ALPHACHARLIE-5bf0d6f09a46\". So, the content of the file is ",
+          "metrics": {
+            "secret_found": true,
+            "secret_word": "ALPHACHARLIE-5bf0d6f09a46"
+          }
+        },
+        {
+          "name": "turboquant_kv_active",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "kv_params={'cache_type_k': 'turbo3', 'cache_type_v': 'turbo3'}",
+          "metrics": {}
+        }
+      ]
+    },
+    {
+      "test_id": "T0c",
+      "title": "T0 zero-shot (unrestricted, vllm gemma-4-e2b-it-vllm)",
+      "engine": "vllm",
+      "model": "gemma-4-e2b-it-vllm",
+      "mode": "unrestricted",
+      "kv_quant": "turboquant35 (quant=bitsandbytes, cpu_offload_gb=9.9)",
+      "is_data_point": true,
+      "started": "2026-04-18T18:14:05",
+      "finished": "2026-04-18T18:14:51",
+      "duration_s": 45.902,
+      "passed": true,
+      "pass_count": 1,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "zero_shot_data_point",
+          "passed": true,
+          "duration_s": 45.9024,
+          "details": "emitted_tool_call=True | chars=102 | head=    <tool_call>{\"name\":\"tq-file-read\",\"arguments\":{\"path\":\"/tmp/tqcli_agent_fixture.txt\"}}</tool_call>",
+          "metrics": {
+            "emitted_tag": true,
+            "chars": 102,
+            "tag_name": "tool_call",
+            "raw_output": "    <tool_call>{\"name\":\"tq-file-read\",\"arguments\":{\"path\":\"/tmp/tqcli_agent_fixture.txt\"}}</tool_call>"
+          }
+        }
+      ]
+    },
+    {
+      "test_id": "T1_vg",
+      "title": "T1 approve actionable (vllm gemma-4-e2b-it-vllm, ai_tinkering)",
+      "engine": "vllm",
+      "model": "gemma-4-e2b-it-vllm",
+      "mode": "ai_tinkering",
+      "kv_quant": "turboquant35 (quant=bitsandbytes, cpu_offload_gb=9.9)",
+      "is_data_point": false,
+      "started": "2026-04-18T18:14:51",
+      "finished": "2026-04-18T18:15:12",
+      "duration_s": 20.441,
+      "passed": true,
+      "pass_count": 6,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "spy_file_read_called_once",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "calls=[{'path': '/tmp/tqcli_agent_fixture.txt'}]",
+          "metrics": {
+            "call_count": 1
+          }
+        },
+        {
+          "name": "actionable_tool_confirmed_once",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "confirm_fn_calls=[('tq-file-read', {'path': '/tmp/tqcli_agent_fixture.txt'}, 'actionable')]",
+          "metrics": {}
+        },
+        {
+          "name": "observation_appended",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "hist_len=5 / hist_before=2 / obs_count=1 / obs_head=Observation:\nsecret_word=ALPHACHARLIE-54fe6b605dd3\n",
+          "metrics": {
+            "observation_turns": 1
+          }
+        },
+        {
+          "name": "real_engine_invoked_after_observation",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "pb.call_count=2 / scripted=1 / real=1",
+          "metrics": {
+            "real_calls": 1,
+            "scripted_calls": 1
+          }
+        },
+        {
+          "name": "secret_word_in_real_followup",
+          "passed": true,
+          "duration_s": 20.4412,
+          "details": "secret=ALPHACHARLIE-54fe6b605dd3 | found_in_final=True | final_len=27 | final_head=\"ALPHACHARLIE-54fe6b605dd3\"",
+          "metrics": {
+            "secret_found": true,
+            "secret_word": "ALPHACHARLIE-54fe6b605dd3",
+            "final_text_chars": 27
+          }
+        },
+        {
+          "name": "turboquant_kv_active",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "tune.kv_cache_dtype=turboquant35",
+          "metrics": {}
+        }
+      ]
+    },
+    {
+      "test_id": "T4_vg",
+      "title": "T4 unrestricted ReAct (vllm gemma-4-e2b-it-vllm)",
+      "engine": "vllm",
+      "model": "gemma-4-e2b-it-vllm",
+      "mode": "unrestricted",
+      "kv_quant": "turboquant35 (quant=bitsandbytes, cpu_offload_gb=9.9)",
+      "is_data_point": false,
+      "started": "2026-04-18T18:15:12",
+      "finished": "2026-04-18T18:18:35",
+      "duration_s": 203.1,
+      "passed": true,
+      "pass_count": 6,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "confirm_fn_never_called",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "confirm_calls=0",
+          "metrics": {}
+        },
+        {
+          "name": "file_read_called_once",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "calls=[{'path': '/tmp/tqcli_agent_fixture.txt'}]",
+          "metrics": {}
+        },
+        {
+          "name": "observation_carries_secret",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "obs_head=Observation:\nsecret_word=ALPHACHARLIE-d42047fe16a5\n",
+          "metrics": {}
+        },
+        {
+          "name": "real_engine_followup_invoked",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "real=1 scripted=1",
+          "metrics": {}
+        },
+        {
+          "name": "secret_word_in_real_followup",
+          "passed": true,
+          "duration_s": 203.1002,
+          "details": "secret=ALPHACHARLIE-d42047fe16a5 / found_in_final=True / final_head=<thought The user has provided an observation containing a secret word. The goal is to process this information. Since the previous turn was a tool call to read a file, and now I have the observation, I need to determine the next step based",
+          "metrics": {
+            "secret_found": true,
+            "secret_word": "ALPHACHARLIE-d42047fe16a5"
+          }
+        },
+        {
+          "name": "turboquant_kv_active",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "tune.kv_cache_dtype=turboquant35",
+          "metrics": {}
+        }
+      ]
+    },
+    {
+      "test_id": "T0d",
+      "title": "T0 zero-shot (unrestricted, vllm qwen3-4b-vllm)",
+      "engine": "vllm",
+      "model": "qwen3-4b-vllm",
+      "mode": "unrestricted",
+      "kv_quant": "auto (quant=bitsandbytes, cpu_offload_gb=6.5)  [kv:none \u2014 turboquant_kv.json not present for Qwen3 4B]",
+      "is_data_point": true,
+      "started": "2026-04-18T18:19:47",
+      "finished": "2026-04-18T18:23:22",
+      "duration_s": 215.104,
+      "passed": true,
+      "pass_count": 1,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "zero_shot_data_point",
+          "passed": true,
+          "duration_s": 215.1035,
+          "details": "emitted_tool_call=False | chars=1180 | head=<think> Okay, the user wants me to use the tq-file-read tool to read the file located at /tmp/tqcli_agent_fixture.txt. They specified that I need to reply with ",
+          "metrics": {
+            "emitted_tag": false,
+            "chars": 1180,
+            "tag_name": "tool_call",
+            "raw_output": "<think>\nOkay, the user wants me to use the tq-file-read tool to read the file located at /tmp/tqcli_agent_fixture.txt. They specified that I need to reply with exactly one tool_call block containing JSON and nothing else. Let me make sure I'm following the instructions correctly.\n\nFirst, I need to confirm that the tool name is correct. The tool is called \"tq-file-read\", so that's straightforward. The arguments should include the path to the file. The path provided is /tmp/tqcli_agent_fixture.txt. I need to structure the JSON with the name of the tool and the arguments as a JSON object with the path.\n\nI should check if there are any additional parameters required, but the user didn't mention any, so I'll stick to the path. The format needs to be a single JSON object inside the tool_call tags. No extra text or explanations, just the JSON. Let me make sure the syntax is correct: double quotes, proper commas, and the correct structure.\n\nSo the final output should be a single line with the tool_call tag, then the JSON, then closing the tag. No line breaks or other characters. Let me double-check the example given. The example shows the JSON inside the tool_call tags."
+          }
+        }
+      ]
+    },
+    {
+      "test_id": "T1_vq",
+      "title": "T1 approve actionable (vllm qwen3-4b-vllm, ai_tinkering)",
+      "engine": "vllm",
+      "model": "qwen3-4b-vllm",
+      "mode": "ai_tinkering",
+      "kv_quant": "auto (quant=bitsandbytes, cpu_offload_gb=6.5)  [kv:none \u2014 turboquant_kv.json not present for Qwen3 4B]",
+      "is_data_point": false,
+      "started": "2026-04-18T18:23:22",
+      "finished": "2026-04-18T18:26:58",
+      "duration_s": 216.093,
+      "passed": true,
+      "pass_count": 5,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "spy_file_read_called_once",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "calls=[{'path': '/tmp/tqcli_agent_fixture.txt'}]",
+          "metrics": {
+            "call_count": 1
+          }
+        },
+        {
+          "name": "actionable_tool_confirmed_once",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "confirm_fn_calls=[('tq-file-read', {'path': '/tmp/tqcli_agent_fixture.txt'}, 'actionable')]",
+          "metrics": {}
+        },
+        {
+          "name": "observation_appended",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "hist_len=5 / hist_before=2 / obs_count=1 / obs_head=Observation:\nsecret_word=ALPHACHARLIE-329425010f50\n",
+          "metrics": {
+            "observation_turns": 1
+          }
+        },
+        {
+          "name": "real_engine_invoked_after_observation",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "pb.call_count=2 / scripted=1 / real=1",
+          "metrics": {
+            "real_calls": 1,
+            "scripted_calls": 1
+          }
+        },
+        {
+          "name": "secret_word_in_real_followup",
+          "passed": true,
+          "duration_s": 216.0925,
+          "details": "secret=ALPHACHARLIE-329425010f50 | found_in_final=True | final_len=1159 | final_head=<think> Okay, the user asked me to read the fixture, and I used the tq-file-read tool to get the content. The observation shows that the secret word is \"ALPHACHARLIE-329425010f50\". Now, I need to figure out what the next step is. The user m",
+          "metrics": {
+            "secret_found": true,
+            "secret_word": "ALPHACHARLIE-329425010f50",
+            "final_text_chars": 1159
+          }
+        }
+      ]
+    },
+    {
+      "test_id": "T4_vq",
+      "title": "T4 unrestricted ReAct (vllm qwen3-4b-vllm)",
+      "engine": "vllm",
+      "model": "qwen3-4b-vllm",
+      "mode": "unrestricted",
+      "kv_quant": "auto (quant=bitsandbytes, cpu_offload_gb=6.5)  [kv:none \u2014 turboquant_kv.json not present for Qwen3 4B]",
+      "is_data_point": false,
+      "started": "2026-04-18T18:26:58",
+      "finished": "2026-04-18T18:30:48",
+      "duration_s": 229.863,
+      "passed": true,
+      "pass_count": 5,
+      "fail_count": 0,
+      "steps": [
+        {
+          "name": "confirm_fn_never_called",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "confirm_calls=0",
+          "metrics": {}
+        },
+        {
+          "name": "file_read_called_once",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "calls=[{'path': '/tmp/tqcli_agent_fixture.txt'}]",
+          "metrics": {}
+        },
+        {
+          "name": "observation_carries_secret",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "obs_head=Observation:\nsecret_word=ALPHACHARLIE-c1b898410475\n",
+          "metrics": {}
+        },
+        {
+          "name": "real_engine_followup_invoked",
+          "passed": true,
+          "duration_s": 0.0,
+          "details": "real=1 scripted=1",
+          "metrics": {}
+        },
+        {
+          "name": "secret_word_in_real_followup",
+          "passed": true,
+          "duration_s": 229.8634,
+          "details": "secret=ALPHACHARLIE-c1b898410475 / found_in_final=True / final_head=<think> Okay, the user asked me to read a file, and I did that using the tq-file-read action. The observation from the file is that the secret_word is set to \"ALPHACHARLIE-c1b898410475\". Now, I need to figure out what to do next.  First, I ",
+          "metrics": {
+            "secret_found": true,
+            "secret_word": "ALPHACHARLIE-c1b898410475"
+          }
+        }
+      ]
+    }
+  ]
+}
