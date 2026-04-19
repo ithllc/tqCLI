@@ -95,6 +95,91 @@ Confirmed by `test_7_gemma4_e2b_vllm_cpu_offload` logs:
 [triton_attn.py:620] TurboQuant metadata head_size (256) != layer head_size (512) for ...layers.4.self_attn.attn. Disabling TurboQuant for this layer.
 ```
 
+## Metadata: `turboquant_kv.json` per-model sidecar (vLLM)
+
+The vLLM fork requires per-layer, per-KV-head outlier-channel indices in
+`<model_dir>/turboquant_kv.json` for any `turboquant*` recipe. Without
+the file, `TritonAttentionImpl.__init__` raises
+`ValueError: TurboQuant KV cache requires metadata...` at
+`vllm/v1/attention/backends/triton_attn.py:600`.
+
+Schema (version 1):
+
+| Field | Meaning |
+|---|---|
+| `recipe` | `turboquant25` (2.5 bpv, outlier ratio 0.25) or `turboquant35` (3.5 bpv, ratio 0.50) |
+| `head_size` | Attention head dimension; must be `% 16 == 0` |
+| `transform_version` | `structured_hadamard_v1` — block-decomposed FWHT + deterministic-seeded random ±1 sign flip |
+| `codebook_version` | `lloyd_beta_v1` — baked into the Triton kernels, not this file |
+| `layers.<name>.key_high_precision_indices` | Shape `[num_kv_heads, outlier_count]`; integer indices in `[0, head_size)` |
+| `layers.<name>.value_high_precision_indices` | Same shape; independent selection |
+
+Outlier count: `round(head_size × ratio / 16) × 16`.
+
+## Activation-based metadata auto-calibration (0.6.1+)
+
+For vLLM models that don't ship a calibrated `turboquant_kv.json`,
+`tqcli/core/kv_metadata_generator.py` runs the calibration locally.
+Mirrors the fork's own reference selector at
+`vllm/v1/attention/ops/turboquant_kv_cache.py::build_turboquant_outlier_masks`
+— score each channel by mean-squared activation, pick top-k per kv-head,
+sort ascending.
+
+```mermaid
+flowchart TD
+    load[HF AutoModelForCausalLM<br/>bf16 + device_map=auto] --> patch[monkey-patch Attention.forward]
+    patch --> cap{for each calibration prompt}
+    cap --> rope[apply_rotary_pos_emb<br/>capture post-RoPE K, V]
+    rope --> acc[accumulate x.square.sum<br/>per layer / kv-head / channel<br/>fp64 on CPU]
+    acc --> cap
+    cap --> done[all prompts processed]
+    done --> topk[topk per kv-head → outlier indices]
+    topk --> json[emit turboquant_kv.json<br/>schema v1]
+```
+
+**Entry points:**
+- Explicit: `tqcli model calibrate-kv <model-id> [--recipe turboquant{25,35}] [--force]`
+- Implicit: `VllmBackend.load_model` auto-runs calibration on first load
+  when metadata is missing and `kv_cache_dtype.startswith("turboquant")`
+
+**Preconditions refused** (with clear reason strings via
+`check_calibration_preconditions`):
+- Pre-quantized source weights (AWQ / GPTQ / bnb) — activation statistics
+  on already-scaled weights bias the variance estimate
+- Variable head_dim (Gemma 4 sliding=256 / global=512) — schema is single-head_size
+- `head_dim % 16 != 0`
+- Architectures without a registered capture wrapper
+
+**Architecture registry** (`_CAPTURE_INSTALLERS` in `kv_metadata_generator.py`):
+- ✅ `Qwen3ForCausalLM` — post-RoPE capture via patched `Qwen3Attention.forward`
+- Tracking (not yet implemented): LlamaForCausalLM, MistralForCausalLM,
+  Phi3ForCausalLM. See [#31](https://github.com/ithllc/tqCLI/issues/31).
+
+**Calibration corpus**: 30 paragraph-length, domain-diverse prompts in
+`DEFAULT_CALIBRATION_PROMPTS` (code, math, prose, technical, dialog, misc).
+~5,100 Qwen3 tokens observed total; `MIN_OBSERVED_TOKENS=5_000` enforced by
+`tests/test_kv_metadata_corpus.py`.
+
+**PPL validation gate** (`tests/test_kv_ppl_validation.py`, opt-in via
+`TQCLI_PPL_GATE=1`): asserts `PPL(turboquant35) / PPL(kv:auto) <= 1.05`
+over a fixed 10-prompt corpus, catching silent quality collapse from bad
+outlier indices. Current measured ratio: **0.9997** (essentially
+indistinguishable from baseline).
+
+## MLA (DeepSeek V3) — intentionally unsupported
+
+Multi-head Latent Attention stores K/V as a single shared latent vector
+plus a decoupled-K for RoPE; per-head K/V tensors do not exist at cache
+time. TurboQuant's per-head Hadamard rotation + per-channel outlier
+selection cannot apply to the latent without destroying the algebraic
+structure required by the up-projection matrices. vLLM's MLA path also
+uses dedicated kernels (FlashMLA / MLA-specific triton) that would not
+honor `kv_cache_dtype=turboquant*` even if metadata existed.
+
+For MLA models, use `kv_cache_dtype=fp8` (supported by vLLM upstream on
+the MLA path). See [#33](https://github.com/ithllc/tqCLI/issues/33) for
+the full research summary.
+
 ## End-to-end verified numbers (2026-04-17 run)
 
 From `tests/integration_reports/turboquant_kv_comparison_report.md`

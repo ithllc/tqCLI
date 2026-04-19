@@ -182,25 +182,49 @@ on small batches — the win is in context capacity, not speed.
 
 ---
 
-## 7. vLLM + TurboQuant BF16 Qwen 3 4B (bnb_int4 + turboquant35) — **Verified (planning)**
+## 7. vLLM + TurboQuant BF16 Qwen 3 4B (bnb_int4 + turboquant35) — **Verified E2E (0.6.1+)**
 
-Pipeline plan verification (covered by `test_3_vllm_qwen3_bf16_bnb_turbo`):
+Since 0.6.1, `qwen3-4b-vllm` (BF16 safetensors) runs end-to-end with
+`turboquant35` KV compression. On first load, tqCLI auto-calibrates the
+required `turboquant_kv.json` sidecar from a 30-prompt activation
+corpus. After that it's a straight reload.
 
 ```bash
-python3 -c "
-from tqcli.core.kv_quantizer import plan_quantization_pipeline
-from tqcli.core.model_registry import BUILTIN_PROFILES
-from tqcli.core.system_info import detect_system
-profile = next(m for m in BUILTIN_PROFILES if m.id == 'qwen3-4b-vllm')
-plan = plan_quantization_pipeline(profile, detect_system(), kv_quant_choice='turbo3')
-print(plan.summary)
-"
-# detect full_precision → weight:bnb_int4 → kv:turboquant35
+tqcli model pull qwen3-4b-vllm
+
+# Option A — let first chat invocation auto-calibrate (blocks for ~2-3 min once)
+tqcli chat --model qwen3-4b-vllm --engine vllm --kv-quant turbo3
+
+# Option B — pre-warm the metadata explicitly (recommended for CI / prod)
+tqcli model calibrate-kv qwen3-4b-vllm
+tqcli chat --model qwen3-4b-vllm --engine vllm --kv-quant turbo3
 ```
 
-Runtime chat of this combination on 4 GB VRAM fits in Triton_attn +
-BNB_INT4; load takes ~120 s. Once headless mode lands (see §9 placeholder),
-an end-to-end text chat test will be added to §G of the comparison report.
+Expected first-run output with Option A:
+
+```
+[vllm] TurboQuant metadata missing for qwen3-4b-vllm; running activation calibration (this happens once).
+[calibrate] model=qwen3-4b-vllm arch=Qwen3ForCausalLM head_dim=128 num_kv_heads=8 num_layers=36 recipe=turboquant35 outlier_count=64
+[calibrate] loading model (bf16, device_map=auto)...
+[calibrate]   prompt 1/30: 186 tokens (total 186)
+... (30 prompts) ...
+[calibrate] wrote /root/.tqcli/models/qwen3-4b-vllm/turboquant_kv.json (527.5 KB, 36 layers, 5083 tokens, elapsed 141.8s)
+(EngineCore) INFO: kv_cache_dtype=turboquant35 ...
+(EngineCore) INFO: GPU KV cache size: 3,632 tokens
+```
+
+Pipeline plan: `detect full_precision → weight:bnb_int4 → kv_metadata_calibrate → kv:turboquant35`.
+
+**Quality gate** (opt-in, `TQCLI_PPL_GATE=1 python3 -m unittest tests.test_kv_ppl_validation`):
+baseline PPL 6.8893 vs turboquant35 PPL 6.8872, ratio **0.9997** — indistinguishable
+from uncompressed. No silent quality collapse.
+
+Precondition refuses (visible via `tqcli model calibrate-kv <model-id>`):
+- `qwen3-4b-AWQ` → refused ("already quantized (awq)")
+- `gemma-4-e2b-it-vllm` → refused ("variable head_dim (256 / 512)")
+- `gemma-4-e2b-it-Q4_K_M` → refused (not a vLLM model)
+
+This is the fix for [#27](https://github.com/ithllc/tqCLI/issues/27).
 
 ---
 

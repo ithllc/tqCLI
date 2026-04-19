@@ -57,12 +57,37 @@ stateDiagram-v2
 | llama.cpp Q4_K_M | `qwen3-4b-Q4_K_M` | `detect pre_quantized → kv:turbo3` |
 | llama.cpp pre-quantized Gemma 4 | `gemma-4-e4b-it-Q4_K_M` | `detect pre_quantized → kv:turbo3` |
 | vLLM AWQ | `qwen3-4b-AWQ` | `detect pre_quantized → kv:turboquant35` |
-| vLLM BF16 Qwen 3 | `qwen3-4b-vllm` | `detect full_precision → weight:bnb_int4 → kv:turboquant35` |
+| vLLM BF16 Qwen 3 | `qwen3-4b-vllm` | `detect full_precision → weight:bnb_int4 → kv_metadata_calibrate → kv:turboquant35` |
 | vLLM BF16 Gemma 4 E2B | `gemma-4-e2b-it-vllm` | `detect full_precision → weight:bnb_int4 → cpu_offload → kv:turboquant35` |
 
 The last row — Gemma 4 E2B on 4 GB VRAM — is the one that required #20
 (CPU offload) + #22 (page-size fix) to close. The integration test for
 it is `tests/test_integration_turboquant_kv.py::test_7_gemma4_e2b_vllm_cpu_offload`.
+
+## TurboQuant KV metadata auto-calibration (0.6.1+)
+
+For vLLM models that don't ship a calibrated `turboquant_kv.json`, a
+new stage runs between weight-quant selection and engine load:
+
+```mermaid
+flowchart LR
+    planned[QuantizationPlan<br/>kv_level=turbo3<br/>vllm engine] --> check{model_dir/<br/>turboquant_kv.json<br/>exists?}
+    check -- yes --> load[VllmBackend.load_model]
+    check -- no --> precheck{preconditions OK?<br/>(arch / head_dim / not-prequantized)}
+    precheck -- yes --> calibrate[generate_turboquant_metadata<br/>~2-3 min on 4 GB VRAM]
+    calibrate --> write[write turboquant_kv.json<br/>alongside model]
+    write --> load
+    precheck -- no --> refuse[RuntimeError with reason]
+```
+
+Users can pre-warm this step with:
+
+```bash
+tqcli model calibrate-kv <model-id>
+```
+
+See [`turboquant_kv.md`](turboquant_kv.md) for the full calibration flow
+(activation-based, post-RoPE capture, architecture registry, PPL gate).
 
 ## Integration with `VllmTuningProfile`
 

@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-04-19
+
+### Added
+
+- **TurboQuant KV metadata auto-calibration** ([#27](https://github.com/ithllc/tqCLI/issues/27))
+  for models that ship without `turboquant_kv.json`. New module
+  `tqcli/core/kv_metadata_generator.py` runs an activation-based calibration
+  that mirrors the fork's own `build_turboquant_outlier_masks` reference
+  (mean-squared activation per-kv-head per-channel, top-k outlier indices,
+  sorted). Captures post-RoPE K and V via a monkey-patched
+  `Qwen3Attention.forward`; accumulates second moments online in fp64 on CPU.
+  Auto-runs on first vLLM load when `kv_cache_dtype.startswith("turboquant")`
+  and metadata is missing. Architecture registry + precondition checks refuse
+  AWQ/GPTQ sources, variable-head-dim models (Gemma 4), non-16-aligned
+  `head_dim`, and unregistered architectures with clear reason strings.
+- **Paragraph-length calibration corpus** ([#28](https://github.com/ithllc/tqCLI/issues/28)).
+  Replaces 30 short-sentence prompts (~525 Qwen3 tokens) with 30 domain-diverse
+  paragraph prompts (~5,100 Qwen3 tokens). Raises generator default
+  `max_seq_len` from 512 to 1024. New unit test
+  `tests/test_kv_metadata_corpus.py` enforces `MIN_OBSERVED_TOKENS=5_000` via
+  real Qwen3 tokenizer, preventing corpus regressions.
+- **`tqcli model calibrate-kv <model-id>`** ([#29](https://github.com/ithllc/tqCLI/issues/29))
+  — explicit CLI for pre-warming TurboQuant metadata. Flags: `--recipe`
+  (turboquant25/turboquant35), `--force`. Exits 2/3/4 with distinct messages
+  for different refuse paths. Auto-calibration on vllm load remains as a
+  fallback for users who skip the pre-warm step. Unit-tested via
+  `click.testing.CliRunner` (8 tests, `tests/test_cli_calibrate_kv.py`).
+- **Perplexity validation gate** ([#30](https://github.com/ithllc/tqCLI/issues/30))
+  — new opt-in integration test `tests/test_kv_ppl_validation.py`. Loads
+  `qwen3-4b-vllm` under `kv_cache_dtype=auto` then `turboquant35`, computes
+  forced-sequence PPL via `SamplingParams(prompt_logprobs=1)` over a
+  10-prompt corpus, and asserts ratio ≤ 1.05 to detect silent quality
+  collapse from bad outlier indices. Gated by `TQCLI_PPL_GATE=1`; runs in
+  ~161 s on the 4 GB VRAM reference box. Current calibrated metadata
+  scores ratio **0.9997** (baseline PPL 6.8893, turboquant35 PPL 6.8872).
+
+### Changed
+
+- `tests/test_integration_agent_functional.py` — removed the
+  `kv_quant_choice="none"` workaround for Qwen 3 4B on vLLM. Now loads
+  `qwen3-4b-vllm` with `turbo3` and relies on the auto-calibrate-on-load
+  path. Tests T1_vq and T4_vq advance from 5/5 to 6/6 steps: the new 6th
+  assertion is `turboquant_kv_active`, which verifies the vLLM runtime
+  actually wired `kv_cache_dtype=turboquant35` (not a silent fallback).
+  Full E2E: 11/11 functional + 4/4 data-point PASS; zero `kv:none`
+  annotations remain in `agent_modes_functional_report.md`.
+
+### Closed (tracking only — not implemented)
+
+- [#31](https://github.com/ithllc/tqCLI/issues/31) — Llama 3 / Mistral / Phi-3
+  architecture wrappers. Deferred until the target models are available
+  locally for E2E validation. Shipping untested wrappers was rejected by
+  Gemini review as risking silent breakage.
+- [#32](https://github.com/ithllc/tqCLI/issues/32) — Gemma 4 per-layer
+  `head_dim` (256 sliding / 512 global). Requires metadata schema v2 and
+  runtime changes in `vllm-turboquant` fork itself; tqCLI's preconditions
+  correctly refuse variable-head-dim calibration today, and Gemma 4's 28
+  sliding-window layers already benefit from TurboQuant with bf16 fallback
+  on the 7 global-attention layers. Filed against fork maintainer.
+- [#33](https://github.com/ithllc/tqCLI/issues/33) — Multi-head Latent
+  Attention (DeepSeek V3) compatibility. Closed as **won't fix**: TurboQuant's
+  per-head Hadamard rotation is mathematically incompatible with MLA's
+  low-rank latent compression + per-head up-projection. Recommend `kv_cache_dtype=fp8`
+  for MLA models (supported by vLLM upstream).
+
 ## [0.6.0] - 2026-04-18
 
 ### Added

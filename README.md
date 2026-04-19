@@ -1,10 +1,18 @@
 # tqCLI (TurboQuant CLI)
 
-**Version:** 0.6.0 — [release notes in CHANGELOG.md](CHANGELOG.md).
+**Version:** 0.6.1 — [release notes in CHANGELOG.md](CHANGELOG.md).
 
 A cross-platform CLI for **local LLM inference** using quantized models, with smart routing, real-time performance monitoring, TurboQuant KV cache compression, and automatic handoff to frontier model CLIs when local inference falls below acceptable thresholds.
 
 Built with [TurboQuant](https://arxiv.org/abs/2504.19874) methodologies — applying quantization best practices from Google Research's ICLR 2026 paper on lossless 3-bit KV cache compression.
+
+## What's new in 0.6.1
+
+- **TurboQuant KV metadata auto-calibration** ([#27](https://github.com/ithllc/tqCLI/issues/27)) — models that don't ship a calibrated `turboquant_kv.json` (e.g. Qwen 3 4B BF16 on vLLM) are now automatically calibrated on first load via a 30-prompt activation sweep. Mirrors the fork's own reference outlier-selection math; captures post-RoPE K and V; refuses AWQ/GPTQ and variable-head-dim sources with clear reasons.
+- **Expanded paragraph-length calibration corpus** ([#28](https://github.com/ithllc/tqCLI/issues/28)) — 30 domain-diverse prompts (~5,100 Qwen3 tokens); enforced by unit test via real tokenizer.
+- **Explicit `tqcli model calibrate-kv <id>`** ([#29](https://github.com/ithllc/tqCLI/issues/29)) — pre-warm TurboQuant metadata without going through a chat session. Useful for CI and pre-production environments.
+- **Perplexity validation gate** ([#30](https://github.com/ithllc/tqCLI/issues/30)) — opt-in integration test asserts PPL(turboquant35) / PPL(kv:auto) ≤ 1.05 on a 10-prompt corpus. Current measured ratio: **0.9997** (indistinguishable from baseline).
+- **Agent-modes integration suite** re-validated end-to-end on Qwen 3 4B vLLM with real TurboQuant (no more `kv:none` fallback). `agent_modes_functional_report.md`: 11/11 functional + 4/4 data-point PASS.
 
 ## What's new in 0.6.0
 
@@ -107,6 +115,9 @@ tqcli chat --model qwen3-coder-30b-a3b-instruct-Q4_K_M
 
 # Enable TurboQuant KV cache compression (CUDA 12.8+ required)
 tqcli chat --model qwen3-4b-Q4_K_M --kv-quant turbo3
+
+# Pre-warm TurboQuant metadata on a vLLM model (0.6.1+; optional — auto-runs on first chat load)
+tqcli model calibrate-kv qwen3-4b-vllm
 
 # In-session commands:
 #   /stats    — Show performance statistics
