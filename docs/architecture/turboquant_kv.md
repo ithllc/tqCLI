@@ -152,8 +152,20 @@ flowchart TD
 
 **Architecture registry** (`_CAPTURE_INSTALLERS` in `kv_metadata_generator.py`):
 - ✅ `Qwen3ForCausalLM` — post-RoPE capture via patched `Qwen3Attention.forward`
-- Tracking (not yet implemented): LlamaForCausalLM, MistralForCausalLM,
-  Phi3ForCausalLM. See [#31](https://github.com/ithllc/tqCLI/issues/31).
+  (with q_norm/k_norm).
+- ✅ `LlamaForCausalLM` — patched `LlamaAttention.forward`, separate q/k/v
+  projections, no q_norm/k_norm. Validated on `SmolLM2-135M-Instruct`.
+- ✅ `MistralForCausalLM` — patched `MistralAttention.forward`. Identical shape
+  to Llama; `sliding_window` is an attention-mask concern and doesn't affect
+  K/V capture shape. Validated on `TinyMistral-248M`.
+- ✅ `Phi3ForCausalLM` — patched `Phi3Attention.forward` with fused `qkv_proj`
+  slicing at `(n_heads × head_dim, n_kv × head_dim, n_kv × head_dim)`.
+  Validated on `Phi-3-mini-4k-instruct`.
+
+**head_dim derivation**: Llama 3 / Mistral / Phi-3 / SmolLM2 configs omit
+an explicit `head_dim` field. `_extract_architecture_params` derives
+`head_dim = hidden_size // num_attention_heads` when absent. Qwen3 / Gemma 4
+configs that set `head_dim` explicitly are unaffected.
 
 **Calibration corpus**: 30 paragraph-length, domain-diverse prompts in
 `DEFAULT_CALIBRATION_PROMPTS` (code, math, prose, technical, dialog, misc).

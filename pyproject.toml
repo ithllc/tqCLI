@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tqcli"
-version = "0.6.0"
+version = "0.6.2"
 description = "TurboQuant CLI — local LLM inference with smart model routing, performance monitoring, and TurboQuant methodologies"
 readme = "README.md"
 license = {text = "MIT"}

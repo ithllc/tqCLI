@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-04-19
+
+### Added
+
+- **LlamaForCausalLM, MistralForCausalLM, Phi3ForCausalLM capture wrappers**
+  ([#31](https://github.com/ithllc/tqCLI/issues/31)). `_CAPTURE_INSTALLERS` in
+  `tqcli/core/kv_metadata_generator.py` now registers four architectures
+  (Qwen3 + Llama 3 + Mistral + Phi-3). Llama and Mistral share a pattern
+  (separate q/k/v projections, RoPE, no q_norm/k_norm); Phi-3 uses a fused
+  `qkv_proj` that the wrapper slices by (num_attention_heads × head_dim,
+  num_key_value_heads × head_dim, num_key_value_heads × head_dim). All three
+  validated end-to-end against `HuggingFaceTB/SmolLM2-135M-Instruct`,
+  `Locutusque/TinyMistral-248M`, and `microsoft/Phi-3-mini-4k-instruct`:
+  calibration emits `turboquant_kv.json` that loads cleanly via
+  `vllm.v1.attention.ops.turboquant_metadata.load_turboquant_metadata`.
+- **12 architecture-coverage tests** in `tests/test_kv_metadata_archs.py`
+  covering registry contents, install/restore lifecycle, head_dim derivation,
+  live precondition checks, metadata-shape invariants, and vLLM loader
+  round-trip. Live-model tests skip gracefully when the model dir is absent.
+
+### Changed
+
+- **`_extract_architecture_params` now derives `head_dim` from
+  `hidden_size // num_attention_heads`** when the config omits an explicit
+  `head_dim` field. This pattern is the norm for Llama 3, Mistral, Phi-3, and
+  SmolLM2 configs (all three test models required it). Qwen3 / Gemma 4
+  configs that set `head_dim` explicitly are unaffected.
+- Extracted `_accumulate_kv_scores` shared helper — the Qwen3 wrapper's
+  inline accumulator is now the common path reused by Llama/Mistral/Phi-3.
+  No behavior change for Qwen3 calibration; existing tests pass unchanged.
+
 ## [0.6.1] - 2026-04-19
 
 ### Added

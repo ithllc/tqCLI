@@ -389,6 +389,32 @@ class _CaptureHandle:
     token_counts: dict[int, int]
 
 
+def _accumulate_kv_scores(
+    layer_idx: int,
+    key_states: torch.Tensor,
+    value_states: torch.Tensor,
+    scores_k: dict[int, torch.Tensor],
+    scores_v: dict[int, torch.Tensor],
+    token_counts: dict[int, int],
+) -> None:
+    with torch.no_grad():
+        k32 = key_states.detach().to(torch.float32)
+        v32 = value_states.detach().to(torch.float32)
+        bsz, n_kv, seq, hdim = k32.shape
+        k_flat = k32.permute(0, 2, 1, 3).reshape(-1, n_kv, hdim)
+        v_flat = v32.permute(0, 2, 1, 3).reshape(-1, n_kv, hdim)
+        k_sum = k_flat.square().sum(dim=0).to(torch.float64).cpu()
+        v_sum = v_flat.square().sum(dim=0).to(torch.float64).cpu()
+        if layer_idx in scores_k:
+            scores_k[layer_idx] += k_sum
+            scores_v[layer_idx] += v_sum
+            token_counts[layer_idx] += bsz * seq
+        else:
+            scores_k[layer_idx] = k_sum
+            scores_v[layer_idx] = v_sum
+            token_counts[layer_idx] = bsz * seq
+
+
 def _install_qwen3_capture() -> _CaptureHandle:
     from transformers.models.qwen3 import modeling_qwen3
     from transformers.models.qwen3.modeling_qwen3 import (
@@ -418,22 +444,9 @@ def _install_qwen3_capture() -> _CaptureHandle:
         cos, sin = position_embeddings
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
-        with torch.no_grad():
-            k32 = key_states.detach().to(torch.float32)
-            v32 = value_states.detach().to(torch.float32)
-            bsz, n_kv, seq, hdim = k32.shape
-            k_flat = k32.permute(0, 2, 1, 3).reshape(-1, n_kv, hdim)
-            v_flat = v32.permute(0, 2, 1, 3).reshape(-1, n_kv, hdim)
-            k_sum = k_flat.square().sum(dim=0).to(torch.float64).cpu()
-            v_sum = v_flat.square().sum(dim=0).to(torch.float64).cpu()
-            if self.layer_idx in scores_k:
-                scores_k[self.layer_idx] += k_sum
-                scores_v[self.layer_idx] += v_sum
-                token_counts[self.layer_idx] += bsz * seq
-            else:
-                scores_k[self.layer_idx] = k_sum
-                scores_v[self.layer_idx] = v_sum
-                token_counts[self.layer_idx] = bsz * seq
+        _accumulate_kv_scores(
+            self.layer_idx, key_states, value_states, scores_k, scores_v, token_counts
+        )
 
         if past_key_values is not None:
             key_states, value_states = past_key_values.update(
@@ -466,10 +479,207 @@ def _install_qwen3_capture() -> _CaptureHandle:
     return _CaptureHandle(restore=restore, scores_k=scores_k, scores_v=scores_v, token_counts=token_counts)
 
 
+def _install_llama_capture() -> _CaptureHandle:
+    from transformers.models.llama import modeling_llama
+    from transformers.models.llama.modeling_llama import (
+        ALL_ATTENTION_FUNCTIONS,
+        apply_rotary_pos_emb,
+        eager_attention_forward,
+    )
+
+    scores_k: dict[int, torch.Tensor] = {}
+    scores_v: dict[int, torch.Tensor] = {}
+    token_counts: dict[int, int] = {}
+    original = modeling_llama.LlamaAttention.forward
+
+    def patched_forward(
+        self,
+        hidden_states,
+        position_embeddings,
+        attention_mask,
+        past_key_values=None,
+        **kwargs,
+    ):
+        input_shape = hidden_states.shape[:-1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
+        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        cos, sin = position_embeddings
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        _accumulate_kv_scores(
+            self.layer_idx, key_states, value_states, scores_k, scores_v, token_counts
+        )
+
+        if past_key_values is not None:
+            key_states, value_states = past_key_values.update(
+                key_states, value_states, self.layer_idx
+            )
+
+        attn_interface = ALL_ATTENTION_FUNCTIONS.get_interface(
+            self.config._attn_implementation, eager_attention_forward
+        )
+        attn_output, attn_weights = attn_interface(
+            self,
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            dropout=0.0 if not self.training else self.attention_dropout,
+            scaling=self.scaling,
+            **kwargs,
+        )
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+        attn_output = self.o_proj(attn_output)
+        return attn_output, attn_weights
+
+    modeling_llama.LlamaAttention.forward = patched_forward
+
+    def restore():
+        modeling_llama.LlamaAttention.forward = original
+
+    return _CaptureHandle(restore=restore, scores_k=scores_k, scores_v=scores_v, token_counts=token_counts)
+
+
+def _install_mistral_capture() -> _CaptureHandle:
+    from transformers.models.mistral import modeling_mistral
+    from transformers.models.mistral.modeling_mistral import (
+        ALL_ATTENTION_FUNCTIONS,
+        apply_rotary_pos_emb,
+        eager_attention_forward,
+    )
+
+    scores_k: dict[int, torch.Tensor] = {}
+    scores_v: dict[int, torch.Tensor] = {}
+    token_counts: dict[int, int] = {}
+    original = modeling_mistral.MistralAttention.forward
+
+    def patched_forward(
+        self,
+        hidden_states,
+        position_embeddings,
+        attention_mask,
+        past_key_values=None,
+        **kwargs,
+    ):
+        input_shape = hidden_states.shape[:-1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
+        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        cos, sin = position_embeddings
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        _accumulate_kv_scores(
+            self.layer_idx, key_states, value_states, scores_k, scores_v, token_counts
+        )
+
+        if past_key_values is not None:
+            key_states, value_states = past_key_values.update(
+                key_states, value_states, self.layer_idx
+            )
+
+        attn_interface = ALL_ATTENTION_FUNCTIONS.get_interface(
+            self.config._attn_implementation, eager_attention_forward
+        )
+        attn_output, attn_weights = attn_interface(
+            self,
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            dropout=0.0 if not self.training else self.attention_dropout,
+            scaling=self.scaling,
+            sliding_window=getattr(self, "sliding_window", None),
+            **kwargs,
+        )
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+        attn_output = self.o_proj(attn_output)
+        return attn_output, attn_weights
+
+    modeling_mistral.MistralAttention.forward = patched_forward
+
+    def restore():
+        modeling_mistral.MistralAttention.forward = original
+
+    return _CaptureHandle(restore=restore, scores_k=scores_k, scores_v=scores_v, token_counts=token_counts)
+
+
+def _install_phi3_capture() -> _CaptureHandle:
+    from transformers.models.phi3 import modeling_phi3
+    from transformers.models.phi3.modeling_phi3 import (
+        ALL_ATTENTION_FUNCTIONS,
+        apply_rotary_pos_emb,
+        eager_attention_forward,
+    )
+
+    scores_k: dict[int, torch.Tensor] = {}
+    scores_v: dict[int, torch.Tensor] = {}
+    token_counts: dict[int, int] = {}
+    original = modeling_phi3.Phi3Attention.forward
+
+    def patched_forward(
+        self,
+        hidden_states,
+        position_embeddings,
+        attention_mask,
+        past_key_values=None,
+        **kwargs,
+    ):
+        input_shape = hidden_states.shape[:-1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
+        q_size = self.config.num_attention_heads * self.head_dim
+        kv_size = self.config.num_key_value_heads * self.head_dim
+        qkv = self.qkv_proj(hidden_states)
+        query_states = qkv[..., :q_size].view(hidden_shape).transpose(1, 2)
+        key_states = qkv[..., q_size : q_size + kv_size].view(hidden_shape).transpose(1, 2)
+        value_states = qkv[..., q_size + kv_size :].view(hidden_shape).transpose(1, 2)
+        cos, sin = position_embeddings
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        _accumulate_kv_scores(
+            self.layer_idx, key_states, value_states, scores_k, scores_v, token_counts
+        )
+
+        if past_key_values is not None:
+            key_states, value_states = past_key_values.update(
+                key_states, value_states, self.layer_idx
+            )
+
+        attn_interface = ALL_ATTENTION_FUNCTIONS.get_interface(
+            self.config._attn_implementation, eager_attention_forward
+        )
+        attn_output, attn_weights = attn_interface(
+            self,
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            dropout=0.0 if not self.training else self.attention_dropout,
+            scaling=self.scaling,
+            sliding_window=getattr(self, "sliding_window", None),
+            **kwargs,
+        )
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+        attn_output = self.o_proj(attn_output)
+        return attn_output, attn_weights
+
+    modeling_phi3.Phi3Attention.forward = patched_forward
+
+    def restore():
+        modeling_phi3.Phi3Attention.forward = original
+
+    return _CaptureHandle(restore=restore, scores_k=scores_k, scores_v=scores_v, token_counts=token_counts)
+
+
 # Registry maps HF model architecture strings to capture installers.
 # Add new entries as other families are validated.
 _CAPTURE_INSTALLERS: dict[str, Callable[[], _CaptureHandle]] = {
     "Qwen3ForCausalLM": _install_qwen3_capture,
+    "LlamaForCausalLM": _install_llama_capture,
+    "MistralForCausalLM": _install_mistral_capture,
+    "Phi3ForCausalLM": _install_phi3_capture,
 }
 
 
@@ -482,18 +692,26 @@ def _extract_architecture_params(config: dict) -> tuple[str, int, int, int]:
     """Return (architecture, head_dim, num_kv_heads, num_hidden_layers).
 
     Handles nested text_config (Gemma-style multimodal) when values aren't at
-    the top level.
+    the top level. Derives head_dim from hidden_size / num_attention_heads
+    when the config omits head_dim (Llama 3 / Mistral / Phi-3 / SmolLM2).
     """
     arch = (config.get("architectures") or ["unknown"])[0]
     head_dim = config.get("head_dim")
     num_kv_heads = config.get("num_key_value_heads")
     num_layers = config.get("num_hidden_layers")
+    hidden_size = config.get("hidden_size")
+    num_attn_heads = config.get("num_attention_heads")
 
     text_config = config.get("text_config")
     if isinstance(text_config, dict):
         head_dim = head_dim if head_dim is not None else text_config.get("head_dim")
         num_kv_heads = num_kv_heads if num_kv_heads is not None else text_config.get("num_key_value_heads")
         num_layers = num_layers if num_layers is not None else text_config.get("num_hidden_layers")
+        hidden_size = hidden_size if hidden_size is not None else text_config.get("hidden_size")
+        num_attn_heads = num_attn_heads if num_attn_heads is not None else text_config.get("num_attention_heads")
+
+    if head_dim is None and hidden_size and num_attn_heads:
+        head_dim = hidden_size // num_attn_heads
 
     return arch, head_dim, num_kv_heads, num_layers
 
