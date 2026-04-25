@@ -1,0 +1,73 @@
+cff-version: 1.2.0
+message: >-
+  If you use turboquant-cli in your research, please also cite the underlying
+  TurboQuant, PolarQuant, and QJL papers listed under references.
+type: software
+title: turboquant-cli
+abstract: >-
+  Cross-platform CLI for local LLM inference using quantized models, with
+  TurboQuant, PolarQuant, and QJL KV cache compression methodologies.
+authors:
+  - alias: ithllc
+url: https://github.com/tqcli/tqcli
+repository-code: https://github.com/tqcli/tqcli
+license: Apache-2.0
+keywords:
+  - llm
+  - quantization
+  - kv-cache
+  - inference
+  - turboquant
+  - polarquant
+  - qjl
+preferred-citation:
+  type: article
+  title: "TurboQuant: Online Vector Quantization with Near-optimal Distortion Rate"
+  authors:
+    - family-names: Zandieh
+      given-names: Amir
+    - family-names: Mirrokni
+      given-names: Vahab
+    - family-names: Kacham
+      given-names: Praneeth
+    - family-names: Hadian
+      given-names: Majid
+    - family-names: Gottesburen
+      given-names: Lars
+    - family-names: Jayaram
+      given-names: Rajesh
+  year: 2026
+  conference:
+    name: International Conference on Learning Representations (ICLR)
+  url: "https://arxiv.org/abs/2504.19874"
+references:
+  - type: article
+    title: "PolarQuant: Quantizing KV Caches with Polar Transformation"
+    authors:
+      - family-names: Han
+        given-names: Insu
+      - family-names: Kacham
+        given-names: Praneeth
+      - family-names: Karbasi
+        given-names: Amin
+      - family-names: Mirrokni
+        given-names: Vahab
+      - family-names: Zandieh
+        given-names: Amir
+    year: 2026
+    conference:
+      name: International Conference on Artificial Intelligence and Statistics (AISTATS)
+    url: "https://arxiv.org/abs/2502.02617"
+  - type: article
+    title: "QJL: 1-Bit Quantized JL Transform for KV Cache Quantization with Zero Overhead"
+    authors:
+      - family-names: Zandieh
+        given-names: Amir
+      - family-names: Daliri
+        given-names: Majid
+      - family-names: Han
+        given-names: Insu
+    year: 2025
+    conference:
+      name: AAAI Conference on Artificial Intelligence
+    url: "https://arxiv.org/abs/2406.03482"

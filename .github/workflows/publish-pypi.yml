@@ -1,0 +1,66 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      placeholder:
+        description: 'Build & publish a 0.0.0 placeholder to claim the turboquant-cli name (one-time)'
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install build
+
+      - name: Build placeholder (turboquant-cli 0.0.0)
+        if: ${{ inputs.placeholder }}
+        run: |
+          set -euo pipefail
+          STAGE="$RUNNER_TEMP/stage"
+          mkdir -p "$STAGE/turboquant_cli"
+          cd "$STAGE"
+          cat > pyproject.toml <<'EOF'
+          [build-system]
+          requires = ["setuptools>=64"]
+          build-backend = "setuptools.build_meta"
+
+          [project]
+          name = "turboquant-cli"
+          version = "0.0.0"
+          description = "Placeholder reservation for turboquant-cli; see https://github.com/tqcli/tqcli"
+          readme = "README.md"
+          requires-python = ">=3.10"
+          license = { text = "Apache-2.0" }
+          authors = [{ name = "tqcli" }]
+          urls = { Homepage = "https://github.com/tqcli/tqcli" }
+          EOF
+          cat > README.md <<'EOF'
+          # turboquant-cli (placeholder)
+
+          Reserves the `turboquant-cli` PyPI name. The first real release will be 0.7.0.
+
+          Licensed under the Apache License, Version 2.0.
+          See https://github.com/tqcli/tqcli for the actual project.
+          EOF
+          cat > turboquant_cli/__init__.py <<'EOF'
+          __version__ = "0.0.0"
+          EOF
+          python -m build
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cp dist/* "$GITHUB_WORKSPACE/dist/"
+
+      - name: Guard against accidental real-release run
+        if: ${{ !inputs.placeholder }}
+        run: |
+          echo "::error::Real-release publish path is not yet wired. Re-run with placeholder=true, or extend this workflow once pyproject.toml is renamed to turboquant-cli."
+          exit 1
+
+      - uses: pypa/gh-action-pypi-publish@release/v1

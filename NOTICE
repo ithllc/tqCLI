@@ -1,0 +1,44 @@
+turboquant-cli
+Copyright 2026 ithllc
+
+This product includes implementations of research methodologies developed by:
+
+  TurboQuant: Online Vector Quantization with Near-optimal Distortion Rate
+  Zandieh, A., Mirrokni, V., Kacham, P., Hadian, M., Gottesburen, L.,
+  Jayaram, R. (Google Research / Google DeepMind). ICLR 2026.
+  https://arxiv.org/abs/2504.19874
+
+  PolarQuant: Quantizing KV Caches with Polar Transformation
+  Han, I. (KAIST), Kacham, P., Karbasi, A., Mirrokni, V., Zandieh, A.
+  AISTATS 2026.
+  https://arxiv.org/abs/2502.02617
+
+  QJL: 1-Bit Quantized JL Transform for KV Cache Quantization with Zero Overhead
+  Zandieh, A., Daliri, M. (NYU), Han, I. (KAIST). AAAI 2025.
+  https://arxiv.org/abs/2406.03482
+
+INDEPENDENT IMPLEMENTATION
+
+turboquant-cli is an independent open-source implementation of the above
+research methods, written from the published papers without reference to any
+official or third-party implementation. This project is not affiliated with,
+endorsed by, or sponsored by Google LLC, Google DeepMind, the Korea Advanced
+Institute of Science and Technology (KAIST), or New York University (NYU).
+The names "TurboQuant", "PolarQuant", and "QJL" are used herein solely to
+describe the underlying research methodologies; no trademark claim is made
+or implied.
+
+UPSTREAM FORKS
+
+This project depends on two forks maintained under separate licenses:
+
+  llama-cpp-python-turboquant
+    Fork of: abetlen/llama-cpp-python (MIT License)
+    Repo:    https://github.com/tqcli/llama-cpp-turboquant
+
+  vllm-turboquant
+    Fork of: vllm-project/vllm (Apache License, Version 2.0)
+    Repo:    https://github.com/tqcli/vllm-turboquant
+
+Each fork retains its upstream license. See the respective fork repositories
+for their LICENSE and NOTICE files.
