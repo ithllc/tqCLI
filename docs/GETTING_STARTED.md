@@ -11,28 +11,51 @@ This guide walks you through installing tqCLI, downloading your first model, and
 
 ## Step 1: Install tqCLI
 
-### From Source (recommended during alpha)
+### From PyPI (recommended)
 
 ```bash
-git clone https://github.com/ithllc/tqCLI.git
-cd tqCLI
-
 # Create and activate a virtual environment
 python3 -m venv .venv
 source .venv/bin/activate  # Linux/macOS
 # .venv\Scripts\activate   # Windows PowerShell
 
-# Install tqCLI
-pip install -e ".[llama]"   # with llama.cpp backend
-# pip install -e ".[vllm]"  # with vLLM backend (Linux + NVIDIA only)
-# pip install -e ".[all]"   # both backends
+# llama.cpp backend (most platforms — Linux/macOS/Windows × CPU/CUDA/Metal)
+pip install 'turboquant-cli[llama-tq]'
+
+# vLLM backend (Linux + NVIDIA Ampere/Ada/Hopper)
+pip install 'turboquant-cli[vllm-tq]' \
+  --find-links https://github.com/tqcli/vllm-turboquant/releases/latest
+
+# Blackwell hardware (sm_100 / sm_120 / sm_121) — opt in explicitly
+pip install 'turboquant-cli[vllm-tq-blackwell]' \
+  --find-links https://github.com/tqcli/vllm-turboquant/releases/latest
+
+# Both engines (Ampere/Ada/Hopper default)
+pip install 'turboquant-cli[all]' \
+  --find-links https://github.com/tqcli/vllm-turboquant/releases/latest
+```
+
+> **macOS caveat.** `[all]` will fail to resolve `vllm-turboquant` on a Mac
+> — there is no Darwin wheel for vLLM. macOS users should install
+> `[llama-tq]` only.
+
+### From Source (development)
+
+```bash
+git clone https://github.com/tqcli/tqcli.git
+cd tqcli
+
+python3 -m venv .venv
+source .venv/bin/activate
+
+pip install -e '.[llama-tq]'   # or .[vllm-tq], .[all], .[dev]
 ```
 
 ### Verify Installation
 
 ```bash
 tqcli --version
-# tqcli, version 0.5.0
+# tqcli, version 0.7.0
 ```
 
 ## Step 2: Check Your System
@@ -298,3 +321,12 @@ files into `~/.tqcli/skills/<name>/`. Pass `--yes` to skip the prompt (CI).
 - **Read the architecture**: [docs/architecture/](architecture/README.md)
 - **Walk through real flows**: [docs/examples/USAGE.md](examples/USAGE.md)
 - **Contribute**: see [CONTRIBUTING.md](../CONTRIBUTING.md)
+
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Yellow panel "TurboQuant Unavailable" | tqCLI detected capable hardware (CUDA toolkit ≥ 12.8 + SM ≥ 8.6, or Apple Metal) but the installed `vllm` / `llama_cpp` is upstream (no TurboQuant kernels). | Run the `pip install --upgrade ...` command shown in the panel. The panel auto-disappears once the fork is detected on the next start. |
+| `--json` mode but you want the audit hidden | The `tqcli chat --json` flow emits the audit as a one-line stderr metadata blob (still on stderr, not stdout). | Set `TQCLI_SUPPRESS_AUDIT=1` to silence it entirely. |
+| Audit panel interleaves with tool-call tags in `--ai-tinkering` / unrestricted | Stderr buffering bug. | Update to 0.7.0+; the ordering contract in `tqcli/cli.py` flushes the panel before the orchestrator's first stream chunk. |

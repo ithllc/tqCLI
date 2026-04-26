@@ -1,0 +1,82 @@
+name: "Community Verify (tqCLI 0.7.0)"
+description: "Submit a Mac verification report from scripts/community_verify.sh"
+title: "[community-verify-0.7.0] <OS / chip / python>"
+labels: ["community-verify-0.7.0"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## tqCLI 0.7.0 — Community Verification Submission
+
+        Thanks for helping verify the TurboQuant fork wheels on your Mac.
+
+        Please run `scripts/community_verify.sh --manual` (read the consent
+        manifest first), then paste the **entire** markdown report this
+        produces into the report box below.
+
+        **Do not paste `--auto-report` output here.** That mode files an
+        issue on its own — this template is for the manual paste.
+
+        Privacy: only the fields named in the consent manifest are
+        collected. Free-form text in this issue is reviewed before it is
+        merged into the on-repo verification report.
+
+  - type: textarea
+    id: report
+    attributes:
+      label: Verification report (markdown)
+      description: Paste the full report block from scripts/community_verify.sh --manual
+      render: markdown
+      placeholder: |
+        ## tqCLI 0.7.0 — Community Verification
+
+        - **OS:** macOS 14.4
+        - **Chip / arch:** arm64
+        - **Python:** 3.12.2
+        - **pip install:** ok
+        - **chat --json:** ok
+
+        ### system info
+        ```
+        ...
+        ```
+
+        ### chat canned response
+        ```json
+        ...
+        ```
+    validations:
+      required: true
+
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Overall outcome
+      description: |
+        PASS = pip install succeeded, `tqcli system info` ran, and the
+        canned `Two plus two?` JSON response was non-empty.
+        FAIL = anything else.
+      options:
+        - PASS
+        - FAIL
+        - PARTIAL
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware (optional)
+      description: e.g. "MacBook Pro 14 M2 Pro 16 GB" — helps us correlate
+        wheel variants with hardware.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Consent
+      options:
+        - label: I read scripts/community_verify.sh's consent manifest before
+            running. I understand only the fields it lists are collected.
+          required: true

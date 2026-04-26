@@ -3,8 +3,8 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tqcli"
-version = "0.6.2"
+name = "turboquant-cli"
+version = "0.7.0"
 description = "TurboQuant CLI — local LLM inference with smart model routing, performance monitoring, and TurboQuant methodologies"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -35,10 +35,25 @@ dependencies = [
     "jinja2>=3.1",
 ]
 
+# Distribution name on PyPI is `turboquant-cli`; the import name remains `tqcli`
+# (dateutil pattern). Optional extras pull TurboQuant fork wheels — never the
+# upstream `llama-cpp-python` / `vllm` packages, which lack the TurboQuant KV
+# kernels.
 [project.optional-dependencies]
-llama = ["llama-cpp-python[server]>=0.3.0"]
-vllm = ["vllm>=0.6.0", "bitsandbytes>=0.43.0", "accelerate>=0.30.0"]
-all = ["tqcli[llama,vllm]"]
+llama-tq = [
+    "llama-cpp-python-turboquant>=0.3.0",
+]
+vllm-tq = [
+    "vllm-turboquant==0.7.0.postYYYYMMDD",
+    "bitsandbytes>=0.43.0",
+    "accelerate>=0.30.0",
+]
+vllm-tq-blackwell = [
+    "vllm-turboquant-blackwell==0.7.0.postYYYYMMDD",
+    "bitsandbytes>=0.43.0",
+    "accelerate>=0.30.0",
+]
+all = ["turboquant-cli[llama-tq,vllm-tq]"]
 dev = ["pytest>=7.0", "ruff>=0.4"]
 
 [project.scripts]
@@ -46,8 +61,8 @@ tqcli = "tqcli.cli:main"
 tq = "tqcli.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/ithllc/tqCLI"
-Repository = "https://github.com/ithllc/tqCLI"
+Homepage = "https://github.com/tqcli/tqcli"
+Repository = "https://github.com/tqcli/tqcli"
 
 [tool.setuptools.packages.find]
 include = ["tqcli*"]

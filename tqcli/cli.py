@@ -46,12 +46,36 @@ from tqcli import __version__
 @click.pass_context
 def main(ctx, unrestricted):
     """tqCLI — TurboQuant CLI for local LLM inference with smart routing."""
+    import os as _os
+
     ctx.ensure_object(dict)
     ctx.obj["unrestricted"] = unrestricted
     if unrestricted:
         from tqcli.core.unrestricted import show_unrestricted_warning
         from tqcli.ui.console import console
         show_unrestricted_warning(console)
+
+    # Engine Auditor — runs once per CLI invocation, populates the cache, and
+    # reports a yellow panel when the user has capable hardware but upstream
+    # llama.cpp / vLLM. Skip entirely when TQCLI_SUPPRESS_AUDIT=1 (CI / scripts
+    # that don't want the panel). Rendering is deferred for the `chat` command
+    # because that command may turn on --json mode (stderr metadata instead of
+    # the panel). See TP Phase 5.
+    if _os.environ.get("TQCLI_SUPPRESS_AUDIT") != "1":
+        try:
+            from tqcli.core.engine_auditor import run_audit
+            from tqcli.core.system_info import detect_system as _detect_system
+            _audit_sys_info = _detect_system()
+            _audit_results = run_audit(_audit_sys_info)
+            ctx.obj["_audit_results"] = _audit_results
+            ctx.obj["_audit_sys_info"] = _audit_sys_info
+            if ctx.invoked_subcommand != "chat":
+                from tqcli.ui.console import console as _console, render_audit_warnings
+                render_audit_warnings(_audit_results, _console)
+        except BaseException:  # noqa: BLE001 — audit must never crash startup
+            ctx.obj["_audit_results"] = []
+            ctx.obj["_audit_sys_info"] = None
+
     if ctx.invoked_subcommand is None:
         ctx.invoke(chat)
 
@@ -119,7 +143,31 @@ def chat(ctx, model, engine, context_length, server_url, kv_quant, ai_tinkering,
         from tqcli.ui.console import setup_json_logging
         console.file = sys.stderr
         setup_json_logging()
-    
+
+    # Engine-audit reporting — main() ran the audit; this is where the chat
+    # command renders. In --json mode the audit goes to stderr as a JSON
+    # metadata line (one object per line) so a downstream parser can pick it
+    # up. In TTY mode it shows a yellow Rich panel via render_audit_warnings.
+    _audit_results = ctx.obj.get("_audit_results", []) if ctx.obj else []
+    if _audit_results:
+        if as_json:
+            import json as _json_audit
+            for r in _audit_results:
+                line = _json_audit.dumps({
+                    "engine_audit": {
+                        "engine": r.engine,
+                        "is_turboquant_fork": r.is_turboquant_fork,
+                        "hardware_capable": r.hardware_capable,
+                        "should_warn": r.should_warn,
+                        "install_hint": r.install_hint,
+                    }
+                })
+                sys.stderr.write(line + "\n")
+            sys.stderr.flush()
+        else:
+            from tqcli.ui.console import render_audit_warnings
+            render_audit_warnings(_audit_results, console)
+
     if not as_json or not (prompt or messages):
         print_banner()
     
@@ -155,6 +203,15 @@ def chat(ctx, model, engine, context_length, server_url, kv_quant, ai_tinkering,
             console.print(f"\n[red]{e}[/red]")
             return
         monitor = PerformanceMonitor(config.performance)
+        # Ordering contract (TP C5): in agent modes, the audit panel must be
+        # fully flushed to stderr before the orchestrator emits its first
+        # streamed token tag, otherwise Rich's buffered output can interleave
+        # with <tool_call> tags and produce a garbled stream.
+        if agent_mode != "manual":
+            try:
+                console.file.flush()
+            except Exception:
+                pass
         session = InteractiveSession(
             config, eng, None, monitor,
             agent_mode=agent_mode, max_agent_steps=max_agent_steps,
@@ -266,6 +323,15 @@ def chat(ctx, model, engine, context_length, server_url, kv_quant, ai_tinkering,
 
     # Performance monitor
     monitor = PerformanceMonitor(config.performance)
+
+    # Ordering contract (TP C5): flush console.file to stderr before the
+    # orchestrator's first stream chunk in agent modes. Same rationale as
+    # the server-mode block above.
+    if agent_mode != "manual":
+        try:
+            console.file.flush()
+        except Exception:
+            pass
 
     # Launch interactive session
     session = InteractiveSession(

@@ -138,3 +138,45 @@ single-process callers.
 5. Add an optional dependency group in `pyproject.toml`.
 6. Add integration coverage in `tests/test_integration_turboquant_kv.py`
    (pipeline planning) and a backend-specific integration helper.
+
+
+## Engine Auditor — fork-vs-upstream detection
+
+`tqcli/core/engine_auditor.py` runs at every CLI startup (see
+`tqcli/cli.py`'s root group `main()`). For each engine, it reads a single
+sentinel attribute on the imported module:
+
+| Engine | Sentinel attribute | Set by |
+|--------|--------------------|--------|
+| llama.cpp | `llama_cpp.TURBOQUANT_BUILD = True` | `llama-cpp-python-turboquant` fork's `src/llama_cpp/__init__.py` |
+| vLLM | `vllm.TURBOQUANT_ENABLED = True` | `vllm-turboquant` fork's `vllm/__init__.py` |
+
+When a sentinel is missing AND `tqcli/core/kv_quantizer.py::check_turboquant_compatibility`
+reports the hardware can run TurboQuant kernels (CUDA toolkit ≥ 12.8 +
+SM ≥ 8.6 — or Apple Metal for llama.cpp), the auditor flags
+`should_warn=True` and `tqcli/ui/console.py::render_audit_warnings`
+emits a yellow Rich panel with the exact pip command to install the
+fork. On capable hardware with the fork installed, or on hardware that
+cannot run TurboQuant regardless, the auditor stays silent.
+
+Behavior toggles:
+
+- **`TQCLI_SUPPRESS_AUDIT=1`** — skip the audit entirely (CI / scripts).
+- **`tqcli ... --json`** — the audit output is emitted as a one-line stderr
+  metadata blob (`{"engine_audit": {...}}`) instead of a Rich panel, so
+  `--json` stdout stays parseable.
+- **Agent modes (`--ai-tinkering`, `--stop-trying-to-control-everything-and-just-let-go`)**
+  — the auditor's stderr writes are flushed via `console.file.flush()`
+  BEFORE `AgentOrchestrator.__init__` is called. This is the
+  stderr-ordering contract referenced in `agent_orchestrator.md`; without
+  it, Rich's buffered output can interleave with the orchestrator's
+  streamed `<tool_call>` tags.
+
+The auditor never raises. Every engine import is wrapped — broken
+installs (missing CUDA libs, Pydantic schema mismatches, etc.) cannot
+take down `tqcli` startup; they are reported as "engine unavailable".
+
+Internal API for future agent tools: `engine_auditor.get_status()`
+returns the cached `dict[engine_name, EngineAuditResult]` so an agent
+tool can report authoritative TurboQuant status to the LLM without
+re-importing `vllm` / `llama_cpp` and paying the CUDA-init cost again.
