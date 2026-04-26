@@ -10,8 +10,8 @@ Papers:
 - PolarQuant — <https://arxiv.org/abs/2502.02617>
 
 Forks used by tqCLI:
-- llama.cpp — <https://github.com/ithllc/llama-cpp-turboquant>
-- vLLM — <https://github.com/ithllc/vllm-turboquant>
+- llama.cpp — <https://github.com/tqcli/llama-cpp-turboquant>
+- vLLM — <https://github.com/tqcli/vllm-turboquant>
 
 ## Compression levels
 
@@ -207,3 +207,34 @@ From `tests/integration_reports/turboquant_kv_comparison_report.md`
 | Max concurrency | 4.21× @ 2,048 ctx |
 | Thinking turn | "15% of 240 is 36" (correct) |
 | Simple turn | "Paris" (correct) |
+
+
+## Distribution
+
+As of tqCLI 0.7.0, the TurboQuant forks are shipped as installable wheels.
+Users no longer need to clone the fork repos and build from source.
+
+| Fork | Wheel hosting | Install command |
+|------|---------------|-----------------|
+| `llama-cpp-python-turboquant` | PyPI (cibuildwheel matrix: Linux/macOS/Windows × Py 3.10–3.12 × CPU/CUDA/Metal) | `pip install 'turboquant-cli[llama-tq]'` |
+| `vllm-turboquant` (Ampere/Ada/Hopper) | GitHub Release on `tqcli/vllm-turboquant`, single CUDA 12.8 build | `pip install 'turboquant-cli[vllm-tq]' --find-links https://github.com/tqcli/vllm-turboquant/releases/latest` |
+| `vllm-turboquant-blackwell` (sm_100 / sm_120 / sm_121) | GitHub Release, separate CUDA 13.0 build with PTX hedge for Rubin | `pip install 'turboquant-cli[vllm-tq-blackwell]' --find-links https://github.com/tqcli/vllm-turboquant/releases/latest` |
+
+The architecture target list for the CUDA 13.0 build is
+`TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0 10.0 12.0 12.1+PTX"` — Ampere + Ada
++ Hopper + DC Blackwell (sm_100) + consumer Blackwell (sm_120) + DGX Spark
+/ GB10 (sm_121) + a PTX hedge for Rubin. CUDA 12.8 cannot compile sm_121,
+which is why the toolkit moved to 13.0 for 0.7.0.
+
+Each engine carries a sentinel attribute that tqCLI's Engine Auditor reads
+at startup to detect fork-vs-upstream:
+
+| Engine | Sentinel | Module |
+|--------|----------|--------|
+| llama.cpp | `TURBOQUANT_BUILD = True` | `llama_cpp` |
+| vLLM | `TURBOQUANT_ENABLED = True` | `vllm` |
+
+When the sentinel is missing on capable hardware, the auditor prints a
+yellow Rich panel with the exact `pip install` command — see
+[`inference_engines.md`](./inference_engines.md) for the auditor's full
+flow and the stderr-flush ordering contract used in agent modes.

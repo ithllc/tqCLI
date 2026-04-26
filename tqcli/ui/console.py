@@ -11,6 +11,7 @@ from tqcli import __version__
 from tqcli.core.engine import InferenceStats
 from tqcli.core.model_registry import ModelProfile
 from tqcli.core.performance import PerformanceMonitor
+from tqcli.core.engine_auditor import EngineAuditResult
 from tqcli.core.router import RouteDecision
 
 console = Console()
@@ -187,3 +188,58 @@ def print_skill_list(skills):
         table.add_row(skill.name, skill.description[:80], scripts)
 
     console.print(table)
+
+
+def render_audit_warnings(
+    results: list[EngineAuditResult],
+    target_console: Console | None = None,
+) -> None:
+    """Render one yellow Rich panel per ``should_warn=True`` audit result.
+
+    Stays silent when no engine result triggers a warning. Writes to the
+    supplied ``target_console`` (defaults to the module-level ``console``).
+    Callers in agent modes (``--ai-tinkering`` / unrestricted) MUST flush the
+    underlying file before constructing the ``AgentOrchestrator`` — see TP C5
+    ordering contract — to keep this panel from interleaving with streamed
+    tool-call tags.
+    """
+    from rich.markup import escape as _rich_escape
+
+    out = target_console if target_console is not None else console
+    for r in results:
+        if not r.should_warn:
+            continue
+        # The install_hint contains literal `[llama-tq]` / `[vllm-tq]` tokens
+        # that Rich would otherwise interpret as markup tags and strip.
+        hint = _rich_escape(r.install_hint)
+        if r.engine == "vllm":
+            body = (
+                "Your GPU supports TurboQuant KV compression but your "
+                "installed vLLM is upstream (no turboquant35 kernel).\n\n"
+                "[bold]Fix:[/bold]\n"
+                f"  {hint}\n\n"
+                "Continuing with kv:none fallback."
+            )
+            title = "TurboQuant Unavailable (vLLM)"
+        else:
+            body = (
+                "Your hardware supports TurboQuant KV compression but the "
+                "installed llama.cpp is upstream (no turboN kernels).\n\n"
+                "[bold]Fix:[/bold]\n"
+                f"  {hint}\n\n"
+                "Continuing with kv:none fallback."
+            )
+            title = "TurboQuant Unavailable (llama.cpp)"
+        out.print(Panel(body, title=title, border_style="yellow"))
+
+
+def audit_to_dict(result: EngineAuditResult) -> dict:
+    """Serialize an EngineAuditResult for ``--json`` stderr metadata."""
+    return {
+        "engine": result.engine,
+        "is_turboquant_fork": result.is_turboquant_fork,
+        "hardware_capable": result.hardware_capable,
+        "should_warn": result.should_warn,
+        "install_hint": result.install_hint,
+    }
+

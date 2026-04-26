@@ -100,3 +100,22 @@ regressions:
 - Regression — nested JSON arguments.
 - Regression — multi-step tinkering chain.
 - Regression — `max_steps` bounds an infinite tool-emitting model.
+
+
+## Stderr-ordering contract with the Engine Auditor (added in 0.7.0)
+
+In agent modes (`--ai-tinkering` / unrestricted), the orchestrator emits
+streamed `<tool_call>` tags to stdout while the Engine Auditor and other
+startup chatter writes to stderr (or to stderr-redirected stdout in
+`--json` mode). Rich buffers its output, so without an explicit flush
+the auditor panel can interleave with the orchestrator's first stream
+chunk and produce a garbled stream that confuses both human users and
+downstream parsers.
+
+`tqcli/cli.py` enforces this ordering: BEFORE constructing
+`InteractiveSession` (and therefore the underlying `AgentOrchestrator`),
+it calls `console.file.flush()` so the panel's last newline lands in
+stderr before any orchestrator tag is written.
+
+This is asserted in `tests/test_engine_auditor.py::test_render_then_flush_finishes_before_orchestrator_first_chunk`
+— the canonical regression test for the contract.

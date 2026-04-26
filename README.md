@@ -1,10 +1,22 @@
 # tqCLI (TurboQuant CLI)
 
-**Version:** 0.6.1 — [release notes in CHANGELOG.md](CHANGELOG.md).
+**Version:** 0.7.0 — [release notes in CHANGELOG.md](CHANGELOG.md). Distributed on PyPI as `turboquant-cli`.
 
 A cross-platform CLI for **local LLM inference** using quantized models, with smart routing, real-time performance monitoring, TurboQuant KV cache compression, and automatic handoff to frontier model CLIs when local inference falls below acceptable thresholds.
 
 Built with [TurboQuant](https://arxiv.org/abs/2504.19874) methodologies — applying quantization best practices from Google Research's ICLR 2026 paper on lossless 3-bit KV cache compression.
+
+## What's new in 0.7.0
+
+- **TurboQuant fork wheels are now distributed packages.** `pip install turboquant-cli[llama-tq]` pulls cibuildwheel matrix wheels for `llama-cpp-python-turboquant` from PyPI (Linux/macOS/Windows × Py 3.10–3.12 × CPU/CUDA/Metal). `pip install turboquant-cli[vllm-tq]` pulls `vllm-turboquant` from the GitHub Release on `tqcli/vllm-turboquant` (Ampere/Ada/Hopper). Blackwell consumers (sm_100/120/121) install `[vllm-tq-blackwell]` which targets the dedicated CUDA 13.0 build with PTX hedge for Rubin.
+- **Engine Auditor** (`tqcli/core/engine_auditor.py`) detects fork-vs-upstream on every CLI start and emits a yellow Rich panel with the exact `pip install` command when your hardware supports TurboQuant but the installed engine is upstream. Stays silent on capable+fork installs and on hardware that cannot run TurboQuant. Suppress with `TQCLI_SUPPRESS_AUDIT=1`. In `--json` mode the audit is emitted as a one-line stderr metadata blob, never on stdout. In agent modes (`--ai-tinkering` / unrestricted), the audit panel is flushed BEFORE the orchestrator's first stream chunk so tool-call tags can't interleave.
+- **Distribution name on PyPI is `turboquant-cli`.** The import name is unchanged: `import tqcli` still works, the entry-point `tqcli` script is unchanged. (dateutil pattern: `pip install python-dateutil` -> `import dateutil`.)
+- **License:** Apache-2.0 across the umbrella package and the vLLM fork. The llama.cpp fork inherits MIT from upstream.
+- **GitHub Sponsors** wired via `.github/FUNDING.yml` -> `ithllc` (the LLC behind tqCLI).
+
+## What's new in 0.6.2
+
+- **LlamaForCausalLM, MistralForCausalLM, Phi3ForCausalLM capture wrappers** in the KV-metadata calibrator — Qwen 3 was joined by Llama 3 / Mistral / Phi-3 with shared accumulators and head_dim derivation when configs omit it explicitly.
 
 ## What's new in 0.6.1
 
@@ -68,18 +80,33 @@ All models available as GGUF quantized files on HuggingFace for llama.cpp. Qwen 
 ### Install
 
 ```bash
-# Clone the repository
-git clone https://github.com/ithllc/tqCLI.git
-cd tqCLI
+# Most users: install from PyPI (distribution name is `turboquant-cli`).
+# llama.cpp fork wheel pulls automatically from PyPI.
+pip install 'turboquant-cli[llama-tq]'
 
-# Install with llama.cpp backend (most platforms)
-pip install -e ".[llama]"
+# vLLM fork (Ampere/Ada/Hopper). Wheel lives on the GitHub Release, so we
+# pass `--find-links` to pip:
+pip install 'turboquant-cli[vllm-tq]' \
+  --find-links https://github.com/tqcli/vllm-turboquant/releases/latest
 
-# Or with vLLM backend (Linux/WSL2 + NVIDIA GPU)
-pip install -e ".[vllm]"
+# Blackwell hardware (sm_100 / sm_120 / sm_121) — opt in to the Blackwell
+# wheel built against CUDA 13.0:
+pip install 'turboquant-cli[vllm-tq-blackwell]' \
+  --find-links https://github.com/tqcli/vllm-turboquant/releases/latest
 
-# Or both
-pip install -e ".[all]"
+# Both engines — Ampere/Ada/Hopper default. (Note: `[all]` does NOT include
+# `[vllm-tq-blackwell]`; Blackwell users must opt in explicitly so a wheel
+# resolver does not pull sm_100+ kernels onto an Ada box.)
+pip install 'turboquant-cli[all]' \
+  --find-links https://github.com/tqcli/vllm-turboquant/releases/latest
+
+# macOS users: install only `[llama-tq]`. There is no Darwin wheel for
+# vLLM — `[all]` will fail to resolve `vllm-turboquant` on a Mac.
+
+# Editable / development install (cloning the source tree):
+git clone https://github.com/tqcli/tqcli.git
+cd tqcli
+pip install -e '.[llama-tq]'   # or .[vllm-tq], .[all], .[dev]
 ```
 
 ### Initialize

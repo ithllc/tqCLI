@@ -5,6 +5,90 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-04-26
+
+### Added
+
+- **TurboQuant fork wheels are now installable.** `pip install
+  turboquant-cli[llama-tq]` pulls cibuildwheel matrix wheels for
+  `llama-cpp-python-turboquant` from PyPI (Linux/macOS/Windows × Py
+  3.10–3.12 × CPU/CUDA/Metal). `pip install turboquant-cli[vllm-tq]`
+  pulls `vllm-turboquant` from the GitHub Release on
+  `tqcli/vllm-turboquant` (Ampere/Ada/Hopper, single CUDA 12.8 build).
+  Blackwell hardware (sm_100 / sm_120 / sm_121) opts in with
+  `[vllm-tq-blackwell]`, which targets the dedicated CUDA 13.0 build
+  with a PTX hedge for Rubin
+  (`TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0 10.0 12.0 12.1+PTX"`).
+- **Engine Auditor** (`tqcli/core/engine_auditor.py`) — runs at every
+  CLI start, detects fork-vs-upstream via the `TURBOQUANT_BUILD` /
+  `TURBOQUANT_ENABLED` sentinels, and emits a yellow Rich panel with
+  the exact `pip install` command when the user has capable hardware
+  but upstream packages. Stays silent on capable+fork installs and on
+  hardware that cannot run TurboQuant. Suppress with
+  `TQCLI_SUPPRESS_AUDIT=1`. In `--json` mode the audit is emitted as a
+  one-line stderr metadata blob (`{"engine_audit": {...}}`) instead of
+  a Rich panel — `--json` stdout stays parseable. Exposes
+  `engine_auditor.get_status()` for future agent tools.
+- **Stderr-ordering contract** (`tqcli/cli.py`) — in agent modes
+  (`--ai-tinkering` / unrestricted), `console.file.flush()` is called
+  BEFORE `InteractiveSession` constructs the `AgentOrchestrator`, so
+  the audit panel cannot interleave with the orchestrator's first
+  `<tool_call>` stream chunk. Asserted in
+  `tests/test_engine_auditor.py::test_render_then_flush_finishes_before_orchestrator_first_chunk`.
+- **`scripts/community_verify.sh`** — opt-in verification helper for
+  friend-of-the-project Mac verifiers. Prints an explicit consent
+  manifest BEFORE collecting any data; refuses to run on declined
+  consent. Two modes: `--auto-report` (uses `gh` CLI; never reads or
+  ships tokens) and `--manual` (prints a paste-ready markdown block).
+  Issue template at `.github/ISSUE_TEMPLATE/community_verify_0_7_0.yml`,
+  nightly intake workflow at
+  `.github/workflows/community_verify_collect.yml` opens a PR
+  scraping the labeled issues into
+  `tests/integration_reports/community_verification/0.7.0/`.
+- **GitHub Sponsors** — `.github/FUNDING.yml` routes to `ithllc`
+  (Ivey Technology Holdings LLC, the legal entity behind tqCLI).
+- **Maintainer runbook** — `docs/contributing/RELEASING_WHEELS.md`
+  documents the GCP on-demand wheel-build flow for `vllm-turboquant`
+  (B200 / sm_100 / sm_121 verified; ~$14/round trip on-demand).
+- **`docs/architecture/inference_engines.md`** documents the sentinel
+  attributes and the Engine Auditor's role.
+- **`docs/architecture/agent_orchestrator.md`** cross-references the
+  Engine Auditor's stderr-ordering contract.
+
+### Changed
+
+- **PyPI distribution name is now `turboquant-cli`.** The `tqcli` slug
+  was unavailable on PyPI (taken by an unrelated project, TranQuant);
+  the import name is unchanged (`import tqcli` still works) — the
+  dateutil pattern. `pyproject.toml::project.name` updated; both
+  console scripts (`tqcli`, `tq`) unchanged.
+- **`pyproject.toml` extras replaced.** `[llama]` / `[vllm]` / `[all]`
+  → `[llama-tq]` / `[vllm-tq]` / `[all]` plus the new
+  `[vllm-tq-blackwell]`. The old `[llama]` / `[vllm]` keys no longer
+  install anything — copy/paste from pre-0.7.0 docs will fail loudly.
+  macOS users must install `[llama-tq]` directly; `[all]` has no
+  Darwin wheel path for vLLM.
+- **Repo URLs migrated to `github.com/tqcli/`** — the `ithllc/` URLs
+  redirect permanently; existing clones keep working but new docs
+  reference the new org.
+- **License: Apache-2.0** at the umbrella package level (matching
+  TurboQuant lead author Zandieh's QJL repo and the inherited
+  `vllm-turboquant` license). `LICENSE`, `NOTICE`, and `CITATION.cff`
+  were added in 0.6.2's pre-flight; this release ships against them.
+- **Authoritative architecture target** for the CUDA 13.0 build:
+  `TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0 10.0 12.0 12.1+PTX"` —
+  Ampere + Ada + Hopper + DC Blackwell + consumer Blackwell + DGX
+  Spark/GB10 + PTX hedge for Rubin. CUDA 12.8 cannot compile sm_121.
+
+### Removed
+
+- Upstream `llama-cpp-python` and `vllm` dependency paths. tqCLI now
+  ships exclusively against the TurboQuant forks. Users who need
+  upstream behavior can `pip uninstall llama-cpp-python-turboquant
+  vllm-turboquant && pip install llama-cpp-python vllm` — but the
+  Engine Auditor will then warn at every startup until they suppress
+  it.
+
 ## [0.6.2] - 2026-04-19
 
 ### Added

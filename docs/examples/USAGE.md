@@ -16,20 +16,21 @@ now ship in 0.5.0.
 | RAM | 32 GB |
 | CUDA toolkit | 12.8 |
 | OS | Ubuntu 22.04 on WSL2 (Windows 11) |
-| TurboQuant forks | `ithllc/llama-cpp-turboquant`, `ithllc/vllm-turboquant` |
+| TurboQuant forks | `tqcli/llama-cpp-turboquant`, `tqcli/vllm-turboquant` |
 
 ---
 
 ## 1. Install + first-run bootstrap — **Verified**
 
 ```bash
-git clone https://github.com/ithllc/tqCLI.git
-cd tqCLI
+# 0.7.0+: install from PyPI under the `turboquant-cli` distribution name
+# (import name remains `tqcli`).
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[all]"
+pip install 'turboquant-cli[all]' \
+  --find-links https://github.com/tqcli/vllm-turboquant/releases/latest
 
 tqcli --version
-# tqcli, version 0.5.0
+# tqcli, version 0.7.0
 
 tqcli config init
 tqcli system info --json | jq '.gpu, .vram_mb, .cuda_toolkit_version'

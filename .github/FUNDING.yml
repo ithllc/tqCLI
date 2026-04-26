@@ -1,0 +1,8 @@
+# tqCLI sponsor routing.
+#
+# `ithllc` = Ivey Technology Holdings LLC, the legal entity behind tqCLI.
+# Sponsor revenue routes to the LLC's bank account, not to a personal one.
+# Do NOT replace this with `tqcli` (the GitHub org) — orgs cannot receive
+# Sponsors money on the Free plan, and the LLC is the entity issuing
+# receipts for tax purposes.
+github: ithllc
