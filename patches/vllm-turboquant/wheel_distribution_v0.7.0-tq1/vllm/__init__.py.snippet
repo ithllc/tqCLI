@@ -1,0 +1,16 @@
+# === TurboQuant fork sentinels (append to vllm/__init__.py) ===
+#
+# The build script (scripts/build_wheel_gcp.sh) rewrites the two BUILD_ARCH
+# fields below on each wheel build. Do NOT edit those values by hand — they are
+# populated per-flavor at build time so check_arch_compatibility() can distinguish
+# vllm-turboquant (Ampere/Ada/Hopper) wheels from vllm-turboquant-blackwell wheels
+# at runtime.
+#
+# Source-tree default (both empty strings) tells the runtime check to skip — that
+# is the right behaviour for editable installs of the source tree (no wheel was
+# built, so there is no built-arch claim to honour).
+
+TURBOQUANT_ENABLED = True
+TURBOQUANT_KV_DTYPES = ("turboquant25", "turboquant35")
+TURBOQUANT_BUILD_ARCH = ""        # "ampere-ada-hopper" or "blackwell" after build
+TURBOQUANT_BUILD_ARCH_LIST = ""   # literal TORCH_CUDA_ARCH_LIST value used at build
