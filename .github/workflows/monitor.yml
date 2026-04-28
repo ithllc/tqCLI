@@ -1,0 +1,85 @@
+name: 0.7.0 launch monitor
+
+# Posts a consolidated status comment to issue #42 every 30 min.
+# Survives any local-machine reboot — runs entirely on GH-hosted runners.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  actions: read
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect status from all tracks
+        id: collect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          # Track 2 — llama-cpp-python-turboquant wheels.yml
+          T2_RUN=$(gh run list --repo tqcli/llama-cpp-python-turboquant --workflow wheels.yml --limit 1 --json databaseId,conclusion,status,displayTitle,headBranch,createdAt,url --jq '.[0]')
+          T2_STATUS=$(echo "$T2_RUN" | jq -r '.status')
+          T2_CONCLUSION=$(echo "$T2_RUN" | jq -r '.conclusion // "-"')
+          T2_TITLE=$(echo "$T2_RUN" | jq -r '.displayTitle')
+          T2_URL=$(echo "$T2_RUN" | jq -r '.url')
+          T2_RUNID=$(echo "$T2_RUN" | jq -r '.databaseId')
+          T2_AGE=$(echo "$T2_RUN" | jq -r '.createdAt')
+
+          # Per-cell breakdown if the run is in progress or recently completed
+          T2_CELLS=$(gh api repos/tqcli/llama-cpp-python-turboquant/actions/runs/$T2_RUNID/jobs --paginate --jq '[.jobs[] | "- \(.name): \(.conclusion // .status)"] | join("\n")' 2>/dev/null || echo "(no per-cell data yet)")
+
+          # Track 3 — runpod_verify.yml (may not exist yet)
+          T3_RUN=$(gh run list --repo tqcli/tqcli --workflow runpod_verify.yml --limit 1 --json conclusion,status,displayTitle,createdAt,url --jq '.[0] // empty' 2>/dev/null || echo "")
+          if [ -n "$T3_RUN" ]; then
+              T3_STATUS=$(echo "$T3_RUN" | jq -r '.status')
+              T3_CONCLUSION=$(echo "$T3_RUN" | jq -r '.conclusion // "-"')
+              T3_URL=$(echo "$T3_RUN" | jq -r '.url')
+          else
+              T3_STATUS="not-yet-run"
+              T3_CONCLUSION="-"
+              T3_URL="-"
+          fi
+
+          # Track 4 — PR #38 + umbrella v0.7.0 tag
+          T4_PR=$(gh pr view 38 --repo tqcli/tqcli --json state,mergeable,isDraft,url --jq '.' 2>/dev/null || echo '{}')
+          T4_PR_STATE=$(echo "$T4_PR" | jq -r '.state // "?"')
+          T4_PR_DRAFT=$(echo "$T4_PR" | jq -r '.isDraft // false')
+          T4_PR_URL=$(echo "$T4_PR" | jq -r '.url // "-"')
+
+          T4_UMBRELLA_TAG=$(gh api repos/tqcli/tqcli/git/refs/tags/v0.7.0 --jq '.ref' 2>/dev/null || echo "not-yet-pushed")
+
+          # Build the comment body
+          {
+            echo "## 📊 Status snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
+            echo ""
+            echo "### Track 2 — \`llama-cpp-python-turboquant\` wheels.yml"
+            echo "- **Status:** $T2_STATUS / $T2_CONCLUSION"
+            echo "- **Title:** $T2_TITLE"
+            echo "- **Run:** $T2_URL"
+            echo "- **Started:** $T2_AGE"
+            echo ""
+            echo "<details><summary>Per-cell status</summary>"
+            echo ""
+            echo "$T2_CELLS"
+            echo ""
+            echo "</details>"
+            echo ""
+            echo "### Track 3 — RunPod V3/V4 verify"
+            echo "- **Status:** $T3_STATUS / $T3_CONCLUSION"
+            if [ "$T3_URL" != "-" ]; then
+                echo "- **Run:** $T3_URL"
+            fi
+            echo ""
+            echo "### Track 4 — PR #38 + umbrella \`tqcli v0.7.0\`"
+            echo "- **PR #38:** $T4_PR_STATE (draft=$T4_PR_DRAFT) — $T4_PR_URL"
+            echo "- **\`v0.7.0\` tag:** $T4_UMBRELLA_TAG"
+          } > /tmp/comment.md
+
+          # Post as a comment to #42
+          gh issue comment 42 --repo tqcli/tqcli --body-file /tmp/comment.md
